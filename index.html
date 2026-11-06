@@ -122,6 +122,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .dayhead{display:flex;align-items:baseline;gap:6px;padding:0 4px 2px;font-weight:800}
 .dayhead .n{font-size:26px}
 .today .dayhead{color:var(--accent)}
+.binev .t{color:inherit!important;opacity:.85}.binev .dots{display:none}
 .ev{border-radius:12px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;text-align:left;border:none;width:100%;color:var(--fg)}
 .ev .t{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--muted)}
 .ev .x{font-size:14px;font-weight:800;line-height:1.25;overflow-wrap:anywhere}
@@ -1305,6 +1306,15 @@ function Avatar({ id, size = 40, ring }){
 /* Termine können mehreren Personen gehören: whos = [ids]; who bleibt die erste Person (für ältere Geräte) */
 const evWhos = e => { const w = e && Array.isArray(e.whos) && e.whos.length ? e.whos.filter(x => byId[x]) : []; return w.length ? w : [e && e.who && byId[e.who] ? e.who : 'familie']; };
 const evNames = e => { const w = evWhos(e); return w[0] === 'familie' ? 'Alle' : names(w); };
+/* Müllabfuhr-Termine farbig: Papier blau, Wertstoff gelb, Restmüll dunkelgrau, Bio grün/braun (am Titel erkannt) */
+const BINS = [
+  { re: /(alt)?papier(?!e)|blaue? tonne|pappe/i, name: 'Papier', bg: '#1F5FBF', fg: '#fff' },
+  { re: /wertstoff|gelbe?r? (sack|tonne)|gelbe säcke|verpackung/i, name: 'Wertstoff', bg: '#F5C400', fg: '#1d1d1d' },
+  { re: /rest[- ]?(müll|abfall|tonne)|schwarze? tonne|graue? tonne|hausmüll|(müll|abfuhr|abholung)[^a-z]*rest\b/i, name: 'Restmüll', bg: '#3A3F47', fg: '#fff' },
+  { re: /^bio\s*$|bio[- ]?(müll|abfall|tonne)|braune? tonne|grüne? tonne|kompost|(müll|abfuhr|abholung)[^a-z]*bio\b/i, name: 'Bio', bg: 'linear-gradient(90deg,#3F7D20,#7A5230)', fg: '#fff' }];
+const binOf = e => { const t = ((e && e.title) || '').trim(); return t ? BINS.find(b => b.re.test(t)) || null : null; };
+const binCss = b => b ? 'background:' + b.bg + ';color:' + b.fg + ';border-color:transparent' : '';
+
 function Dots({ ids }){ return html`<span class="dots">${ids.map(id => html`<span class="dot" style=${'background:' + mc(id)}></span>`)}</span>`; }
 function MultiWho({ value, onChange }){
   const fam = !value.length || value[0] === 'familie';
@@ -1812,7 +1822,7 @@ function Heute({ now }){
     <${BusAmpel} buses=${busesOn(now)} allBuses=${busesOn(now, true)} today=${today} />
     ${(chips.length || soonExams.length) ? html`<a href="#kalender" class="todaychips" style="text-decoration:none;color:inherit">
       <span class="sub" style="font-size:14px;font-weight:800">Heute & bald</span>
-      ${chips.map(e => html`<span class="tchip"><${Dots} ids=${evWhos(e)} />${e.time ? e.time + ' ' : ''}${e.title}</span>`)}
+      ${chips.map(e => { const bn = binOf(e); return html`<span class="tchip" style=${binCss(bn)}>${bn ? html`<${Icon} n="bin" size=${16} />` : html`<${Dots} ids=${evWhos(e)} />`}${e.time ? e.time + ' ' : ''}${e.title}</span>`; })}
       ${soonExams.map(x => html`<span class="tchip exam">${countdown(daysUntil(x.datum, now))}: ${x.fach} (${byId[x.kid] ? byId[x.kid].name : ''})</span>`)}
     </a>` : null}
     <${Todos} today=${today} onPress=${(e, t) => startPress(e, null, null, { label: t.title, icon: 'star', todo: t }, null, 'td')} skip=${skipClick} />
@@ -2201,7 +2211,7 @@ function Kalender({ now }){
             <span class="t"><span class="dot" style=${'background:' + mc(t.who)}></span>erledigt${t.slot ? ' ' + SLOTS[slotIdx(t.slot)].adv : ''} · ${byId[t.who].name}</span><span class="x">${t.label}</span></button>`)}
           ${bdays.filter(b => bdayOn(b, ds)).map(b => html`<button type="button" class="ev bdev" onClick=${() => setSheet({ kind:'bd' })}><span class="t"><${Icon} n="cake" size=${13} />Geburtstag</span><span class="x">${b.name}${b.year ? ' wird ' + bdayAge(b, ds) : ''}</span></button>`)}
           ${ex.map(x => html`<button type="button" class="ev exam" onClick=${() => { location.hash = 'schule'; }}><span class="t"><span class="dot" style=${'background:' + mc(x.kid)}></span>Schule</span><span class="x">Klassenarbeit ${x.fach} (${byId[x.kid] ? byId[x.kid].name : ''})</span></button>`)}
-          ${evs.map(e => { const ws = evWhos(e); return html`<button type="button" class="ev" style=${'background:' + (ws.length > 1 ? 'linear-gradient(90deg,' + ws.map(mt).join(',') + ')' : mt(ws[0]))} onClick=${() => setSheet({ kind:'detail', ev: e, ds })}>
+          ${evs.map(e => { const ws = evWhos(e); const bn = binOf(e); return html`<button type="button" class=${'ev' + (bn ? ' binev' : '')} style=${bn ? binCss(bn) : 'background:' + (ws.length > 1 ? 'linear-gradient(90deg,' + ws.map(mt).join(',') + ')' : mt(ws[0]))} onClick=${() => setSheet({ kind:'detail', ev: e, ds })}>
             <span class="t"><${Dots} ids=${ws} />${e.time ? e.time + (e.end ? '–' + e.end : '') : 'ganztags'}</span>
             <span class="x">${e.title}${e.remind ? html`<span class="lockmini" title=${'Erinnerung: ' + remTxt(e)}><${Icon} n="bell" size=${13} /></span>` : null}${e.rep ? html`<span class="lockmini" title=${evRepTxt(e)}><${Icon} n="undo" size=${13} /></span>` : null}</span></button>`; })}
           <button type="button" class="addday" onClick=${() => setSheet({ kind:'add', date: ds })} aria-label=${'Termin am ' + dm(d) + ' hinzufügen'}>+ Termin</button>
@@ -2263,7 +2273,7 @@ function ReminderHost(){
   const when = x.ds === iso(new Date()) ? 'Heute' : 'Morgen';
   return html`<div class="overlay"><div class="sheet remsheet" role="alertdialog" aria-modal="true" aria-label=${'Erinnerung: ' + x.e.title}>
     <div class="rembell" aria-hidden="true"><${Icon} n="bell" size=${40} /></div>
-    <div style="text-align:center"><div class="sub" style="font-size:15px;font-weight:800">Erinnerung</div><h2 style="font-size:26px">${x.e.title}</h2>
+    <div style="text-align:center"><div class="sub" style="font-size:15px;font-weight:800">Erinnerung</div>${binOf(x.e) ? html`<div style=${'display:inline-flex;align-items:center;gap:8px;margin:8px 0;padding:8px 18px;border-radius:999px;font-weight:900;font-size:18px;' + binCss(binOf(x.e))}><${Icon} n="bin" size=${22} />${binOf(x.e).name}</div>` : null}<h2 style="font-size:26px">${x.e.title}</h2>
       <div style="font-size:18px;font-weight:700">${when}${x.e.time ? ', ' + x.e.time + (x.e.end ? '–' + x.e.end : '') + ' Uhr' : ' (ganztags)'}</div>
       <div class="row" style="justify-content:center;margin-top:8px"><span class="avstack">${evWhos(x.e).map(id => html`<${Avatar} id=${id} size=${36} />`)}</span><span class="sub" style="font-size:15px">${evNames(x.e)}</span></div></div>
     <button type="button" class="btn" onClick=${() => { remMark(x.key); close(x.key); }}><${Icon} n="check" size=${20} />OK, verstanden</button>
@@ -3435,7 +3445,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '69';
+const APP_VER = '70';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
