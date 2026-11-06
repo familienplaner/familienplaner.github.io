@@ -1,0 +1,22 @@
+name: App bauen
+on:
+  push:
+    paths: ['build.py', '.github/workflows/bauen.yml']
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  bauen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: App aus der bisherigen Version bauen
+        run: python3 build.py 5e40ec97a48ec26fce498792291baa785b65e39441ea8b53168a227b919b3ee1
+      - name: Dateien speichern
+        run: |
+          touch .nojekyll
+          git config user.name 'familienplaner-bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html 404.html *.webmanifest sw.js icon.svg .nojekyll
+          git commit -m 'App gebaut' || echo 'nichts zu tun'
+          git push
