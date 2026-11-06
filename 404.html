@@ -2925,34 +2925,92 @@ function FamilyStart({ onDone }){
     <button type="button" class="btn ghost" onClick=${() => { setErr(''); setMode('pick'); }}>Zurück</button></form>`);
 }
 
-/* ---------- Admin: alle Familien ---------- */
+/* ---------- Admin: alle Familien und Nutzer ---------- */
+const admDate = (v, t) => v ? new Date(v).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' }) + (t ? ' ' + new Date(v).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' }) : '') : '–';
+const admErr = e => { const m = (e && e.message) || ''; return /not_self/.test(m) ? 'Das geht nicht mit deinem eigenen Zugang.' : /legacy_family/.test(m) ? 'Die eigene Familie kann hier nicht gelöscht werden.' : /not_app_admin/.test(m) ? 'Dieser Zugang hat keine Admin-Rechte.' : 'Das hat nicht geklappt: ' + m; };
+const admRpc = async (fn, args) => { const r = await sb.rpc(fn, args); if (r.error) throw r.error; return r.data; };
+const admCopy = async t => { try { await navigator.clipboard.writeText(t); toast('Kopiert'); } catch (e) { toast('Bitte markieren und kopieren'); } };
+const famAddr = f => f && f.slug ? location.host + '/' + f.slug : '';
+/* Neue Registrierungen: Zeitpunkt des letzten Admin-Besuchs wird auf diesem Gerät gemerkt */
+const admSeen = () => +(lsGet('fb-adm-seen') || 0);
+function UserActions({ u, reload }){
+  const [conf, setConf] = useState(null); const [busy, setBusy] = useState(false);
+  if (u.ich) return html`<div class="sub" style="font-size:13px">Das ist dein eigener Zugang.</div>`;
+  const run = async (fn, ok) => { setBusy(true); try { await fn(); toast(ok); setConf(null); reload(); } catch (e) { toast(admErr(e)); } setBusy(false); };
+  const reset = () => run(async () => { const { error } = await sb.auth.resetPasswordForEmail(u.email, { redirectTo: location.origin + '/' }); if (error) throw error; }, 'Mail zum neuen Passwort an ' + u.email + ' geschickt');
+  if (conf) return html`<div class="hint warn" style="margin:0">${conf === 'del' ? html`<b>${u.email} endgültig löschen?</b> Der Zugang verschwindet. Die Daten der Familie bleiben erhalten.` : html`<b>${u.email} sperren?</b> Anmelden geht dann nicht mehr, angemeldete Geräte fliegen raus. Entsperren geht jederzeit.`}
+    <div class="row" style="margin-top:8px"><button type="button" class="btn small" disabled=${busy} style="background:var(--danger);color:#fff" onClick=${() => conf === 'del' ? run(() => admRpc('admin_delete_user', { uid: u.id }), u.email + ' wurde gelöscht') : run(() => admRpc('admin_ban_user', { uid: u.id, sperren: true }), u.email + ' ist gesperrt')}>${conf === 'del' ? 'Endgültig löschen' : 'Sperren'}</button>
+      <button type="button" class="btn small ghost" onClick=${() => setConf(null)}>Abbrechen</button></div></div>`;
+  return html`<div class="row" style="gap:6px">
+    <button type="button" class="btn small ghost" disabled=${busy} onClick=${reset}>Passwort-Mail senden</button>
+    ${u.gesperrt ? html`<button type="button" class="btn small ghost" disabled=${busy} onClick=${() => run(() => admRpc('admin_ban_user', { uid: u.id, sperren: false }), u.email + ' ist entsperrt')}>Entsperren</button>`
+      : html`<button type="button" class="btn small ghost" onClick=${() => setConf('ban')}>Sperren</button>`}
+    <button type="button" class="btn small ghost" style="color:var(--danger)" onClick=${() => setConf('del')}><${Icon} n="bin" size=${16} />Löschen</button></div>`;
+}
+function UserLine({ u, seen, reload, showFam }){
+  const isNew = seen && new Date(u.created_at).getTime() > seen;
+  return html`<div class="li" style="flex-direction:column;align-items:stretch;gap:8px">
+    <div class="tx"><b style="overflow-wrap:anywhere">${u.email}${u.ich ? ' (du)' : ''} ${isNew ? html`<span class="count" style="background:var(--accent);color:var(--accent-fg)">neu</span>` : null} ${u.gesperrt ? html`<span class="count" style="background:var(--danger);color:#fff">gesperrt</span>` : null}</b>
+      <span style="white-space:normal">${showFam ? (u.familie ? u.familie + (u.slug ? ' (/' + u.slug + ')' : '') : 'noch in keiner Familie') + ' · ' : ''}${u.role === 'admin' ? 'Familien-Admin' : u.role ? 'Mitglied' : ''}${u.role ? ' · ' : ''}registriert ${admDate(u.created_at)} · zuletzt angemeldet ${admDate(u.last_sign_in_at, true)}${u.email_confirmed_at ? '' : ' · E-Mail noch nicht bestätigt'}</span></div>
+    <${UserActions} u=${u} reload=${reload} /></div>`;
+}
+function FamilyDetail({ f, users, seen, reload, onClose }){
+  const [del, setDel] = useState(false); const [typed, setTyped] = useState(''); const [busy, setBusy] = useState(false);
+  const mem = users.filter(u => u.family_id === f.id);
+  const remove = async () => { setBusy(true); try { await admRpc('admin_delete_family', { fid: f.id }); toast(f.name + ' wurde gelöscht'); onClose(); reload(); } catch (e) { toast(admErr(e)); } setBusy(false); };
+  return html`<${Sheet} title=${f.name} onClose=${onClose} wide>
+    <div class="li" style="flex-wrap:wrap;gap:10px"><div class="tx"><b style="user-select:all">${famAddr(f) || '–'}</b><span>Beitrittscode <b style="user-select:all">${prettyCode(f.join_code)}</b></span></div>
+      <button type="button" class="btn small" onClick=${() => admCopy('Adresse: ' + location.origin + '/' + f.slug + '\nBeitrittscode: ' + prettyCode(f.join_code))}>Adresse und Code kopieren</button></div>
+    <div class="sub" style="font-size:14px">Gegründet ${admDate(f.created_at)} · ${f.eintraege} Einträge · ${f.bilder_30_tage} gelesene Bilder in 30 Tagen · zuletzt aktiv ${admDate(f.zuletzt_aktiv)}</div>
+    <h3 style="font-size:17px">Zugänge (${mem.length})</h3>
+    <div class="list">${mem.length ? mem.map(u => html`<${UserLine} u=${u} seen=${seen} reload=${reload} />`) : html`<div class="sub">Keine Zugänge mehr.</div>`}</div>
+    ${f.legacy ? null : del ? html`<div class="hint warn"><b>Familie „${f.name}“ mit allen Daten löschen?</b> Termine, Listen, Pläne und Sicherungen sind dann weg. Die Zugänge bleiben bestehen und können eine neue Familie gründen. Zum Bestätigen den Namen eintippen:
+        <input class="input" style="margin-top:8px" value=${typed} onInput=${e => setTyped(e.target.value)} placeholder=${f.name} aria-label="Familienname zur Bestätigung" />
+        <div class="row" style="margin-top:8px"><button type="button" class="btn small" style="background:var(--danger);color:#fff" disabled=${busy || typed.trim() !== f.name} onClick=${remove}>Familie endgültig löschen</button>
+        <button type="button" class="btn small ghost" onClick=${() => { setDel(false); setTyped(''); }}>Abbrechen</button></div></div>`
+      : html`<button type="button" class="btn ghost small" style="align-self:flex-start;color:var(--danger)" onClick=${() => setDel(true)}><${Icon} n="bin" size=${16} />Familie löschen</button>`}
+  <//>`;
+}
 function AdminFamilies(){
-  const [rows, setRows] = useState(null); const [err, setErr] = useState(''); const [q, setQ] = useState('');
-  const load = () => { setErr(''); sb.rpc('admin_families').then(r => { if (r.error) setErr(/not_app_admin/.test(r.error.message) ? 'Dieser Zugang hat keine Admin-Rechte.' : 'Die Liste konnte nicht geladen werden.'); else setRows(r.data || []); }).catch(() => setErr('Keine Verbindung.')); };
+  const [rows, setRows] = useState(null); const [users, setUsers] = useState([]); const [err, setErr] = useState(''); const [q, setQ] = useState('');
+  const [tab, setTab] = useState('fam'); const [det, setDet] = useState(null); const [seen] = useState(admSeen);
+  const load = () => { setErr(''); Promise.all([admRpc('admin_families'), admRpc('admin_users').catch(() => [])])
+    .then(([f, u]) => { setRows(f || []); setUsers(u || []); lsSet('fb-adm-seen', String(Date.now())); lsSet('fb-adm-told', String(Date.now())); })
+    .catch(e => setErr(/not_app_admin/.test((e && e.message) || '') ? 'Dieser Zugang hat keine Admin-Rechte.' : 'Die Liste konnte nicht geladen werden.')); };
   useEffect(load, []);
-  const dt = v => v ? new Date(v).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' }) : '–';
-  const list = (rows || []).filter(f => !q.trim() || (f.name + ' ' + (f.slug || '') + ' ' + (f.emails || '')).toLowerCase().includes(q.trim().toLowerCase()));
+  const qq = q.trim().toLowerCase();
+  const list = (rows || []).filter(f => !qq || (f.name + ' ' + (f.slug || '') + ' ' + (f.emails || '')).toLowerCase().includes(qq));
+  const ulist = users.filter(u => !qq || (u.email + ' ' + (u.familie || '') + ' ' + (u.slug || '')).toLowerCase().includes(qq));
+  const fresh = seen ? users.filter(u => new Date(u.created_at).getTime() > seen) : [];
   const sum = k => (rows || []).reduce((a, f) => a + (+f[k] || 0), 0);
+  const famOf = id => (rows || []).find(f => f.id === id);
+  const th = h => html`<th style="padding:10px 12px;font-weight:800;color:var(--muted)">${h}</th>`;
   return html`<main class="main" style="max-width:1100px;margin:0 auto;width:100%;box-sizing:border-box">
-    <div class="head"><div><h1>Alle Familien</h1><div class="sub">${rows ? rows.length + ' Familien · ' + sum('zugaenge') + ' Zugänge · ' + sum('bilder_30_tage') + ' gelesene Bilder in 30 Tagen' : 'Admin-Übersicht'}</div></div>
+    <div class="head"><div><h1>Admin</h1><div class="sub">${rows ? rows.length + ' Familien · ' + users.length + ' Zugänge · ' + sum('bilder_30_tage') + ' gelesene Bilder in 30 Tagen' : 'Übersicht'}</div></div>
       <div class="row"><button type="button" class="btn small ghost" onClick=${load}>Aktualisieren</button>
         <a class="btn small" href=${FAMILY && FAMILY.slug && SLUG_SITE ? '/' + FAMILY.slug : location.pathname} onClick=${() => { if (location.hash === '#admin') { location.hash = ''; location.reload(); } }}>Zum eigenen Board</a>
         <button type="button" class="btn small ghost" onClick=${signOut}>Abmelden</button></div></div>
     ${err ? html`<div class="hint warn" role="alert">${err}</div>` : null}
-    ${rows ? html`<input id="adm-search" class="input" placeholder="Suchen (Name, Adresse, E-Mail)" value=${q} onInput=${e => setQ(e.target.value)} />
+    ${fresh.length ? html`<div class="hint" role="status"><b>${fresh.length === 1 ? 'Neue Registrierung' : fresh.length + ' neue Registrierungen'} seit deinem letzten Besuch:</b> ${fresh.map(u => u.email + (u.familie ? ' (' + u.familie + ')' : ' (noch ohne Familie)')).join(', ')}</div>` : null}
+    ${rows ? html`<div class="row" style="justify-content:space-between;gap:10px">
+        <div class="seg" role="group" aria-label="Ansicht"><button type="button" aria-pressed=${tab === 'fam'} onClick=${() => setTab('fam')}>Familien (${rows.length})</button><button type="button" aria-pressed=${tab === 'user'} onClick=${() => setTab('user')}>Zugänge (${users.length})</button></div>
+        <input id="adm-search" class="input" style="flex:1 1 220px;min-width:0" placeholder="Suchen (Name, Adresse, E-Mail)" value=${q} onInput=${e => setQ(e.target.value)} /></div>
+      ${tab === 'fam' ? html`<div class="sub" style="font-size:13px">Tippe auf eine Familie, um ihre Zugänge zu sehen und zu verwalten.</div>
       <div class="card" style="padding:0;overflow:hidden"><div class="ovx"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:760px">
-        <thead><tr style="text-align:left;background:var(--surface-2)">${['Familie','Adresse','Zugänge','Einträge','Bilder (30 T.)','Zuletzt aktiv','Gegründet','Code'].map(h => html`<th style="padding:10px 12px;font-weight:800;color:var(--muted)">${h}</th>`)}</tr></thead>
-        <tbody>${list.map(f => html`<tr style="border-top:1px solid var(--line)">
-          <td style="padding:10px 12px"><b>${f.name}</b>${f.legacy ? html` <span class="count">eigene</span>` : null}<div class="sub" style="font-size:12px;overflow-wrap:anywhere">${f.emails || f.gegruendet_von || ''}</div></td>
-          <td style="padding:10px 12px">${f.slug ? html`<a href=${'/' + f.slug} target="_blank" rel="noopener">/${f.slug}</a>` : '–'}</td>
+        <thead><tr style="text-align:left;background:var(--surface-2)">${['Familie','Adresse','Zugänge','Einträge','Bilder (30 T.)','Zuletzt aktiv','Gegründet'].map(th)}</tr></thead>
+        <tbody>${list.map(f => html`<tr style="border-top:1px solid var(--line);cursor:pointer" onClick=${() => setDet(f.id)}>
+          <td style="padding:10px 12px"><button type="button" style="all:unset;cursor:pointer;font-weight:800;color:var(--accent)" onClick=${e => { e.stopPropagation(); setDet(f.id); }}>${f.name}</button>${f.legacy ? html` <span class="count">eigene</span>` : null}<div class="sub" style="font-size:12px;overflow-wrap:anywhere">${f.emails || f.gegruendet_von || ''}</div></td>
+          <td style="padding:10px 12px">${f.slug ? html`<button type="button" class="btn small ghost" style="min-height:34px" title="Adresse und Beitrittscode kopieren" onClick=${e => { e.stopPropagation(); admCopy('Adresse: ' + location.origin + '/' + f.slug + '\nBeitrittscode: ' + prettyCode(f.join_code)); }}>/${f.slug} kopieren</button>` : '–'}</td>
           <td style="padding:10px 12px;font-variant-numeric:tabular-nums">${f.zugaenge}</td>
           <td style="padding:10px 12px;font-variant-numeric:tabular-nums">${f.eintraege}</td>
           <td style="padding:10px 12px;font-variant-numeric:tabular-nums">${f.bilder_30_tage}</td>
-          <td style="padding:10px 12px">${dt(f.zuletzt_aktiv)}</td>
-          <td style="padding:10px 12px">${dt(f.created_at)}</td>
-          <td style="padding:10px 12px;font-family:ui-monospace,monospace;user-select:all">${prettyCode(f.join_code)}</td></tr>`)}
+          <td style="padding:10px 12px">${admDate(f.zuletzt_aktiv)}</td>
+          <td style="padding:10px 12px">${admDate(f.created_at)}</td></tr>`)}
         </tbody></table></div></div>
-      ${!list.length ? html`<div class="empty">Keine Familie gefunden.</div>` : null}` : err ? null : html`<div class="loading">Familien werden geladen …</div>`}
+      ${!list.length ? html`<div class="empty">Keine Familie gefunden.</div>` : null}`
+      : html`<div class="card"><div class="list">${ulist.map(u => html`<${UserLine} u=${u} seen=${seen} reload=${load} showFam />`)}</div>
+        ${!ulist.length ? html`<div class="empty">Kein Zugang gefunden.</div>` : null}</div>`}` : err ? null : html`<div class="loading">Wird geladen …</div>`}
+    ${det && famOf(det) ? html`<${FamilyDetail} f=${famOf(det)} users=${users} seen=${seen} reload=${load} onClose=${() => setDet(null)} />` : null}
   </main>`;
 }
 
@@ -2985,7 +3043,7 @@ function InviteCard(){
     ${FAMILY.role === 'admin' ? (conf ? html`<div class="hint warn">Neuer Code? Der alte Code und alte Einladungslinks funktionieren dann nicht mehr. Wer schon dabei ist, bleibt dabei.
         <div class="row" style="margin-top:8px"><button type="button" class="btn small" disabled=${busy} onClick=${renew}>Neuen Code erstellen</button><button type="button" class="btn small ghost" onClick=${() => setConf(false)}>Abbrechen</button></div></div>`
       : html`<button type="button" class="btn ghost small" style="align-self:flex-start" onClick=${() => setConf(true)}>Neuen Code erstellen</button>`) : null}
-    ${appAdmin ? html`<a class="btn ghost small" style="align-self:flex-start" href=${SLUG_SITE ? '/admin' : '#admin'} onClick=${() => { if (!SLUG_SITE) setTimeout(() => location.reload(), 50); }}>Admin: alle Familien ansehen</a>` : null}
+    ${appAdmin ? html`<a class="btn ghost small" style="align-self:flex-start" href=${SLUG_SITE ? '/admin' : '#admin'} onClick=${() => { if (!SLUG_SITE) setTimeout(() => location.reload(), 50); }}>Admin: Familien und Zugänge${window.__admNew ? ' (' + window.__admNew + ' neu)' : ''}</a>` : null}
     <button type="button" class="btn ghost small" style="align-self:flex-start;color:var(--danger)" onClick=${signOut}>Auf diesem Gerät abmelden</button></div>`;
 }
 
@@ -3287,6 +3345,11 @@ function App(){
   const [recovery, setRecovery] = useState(!!window.__fbRecovery);
   useEffect(() => { const h = () => { setRecovery(true); setAuth('out'); }; window.addEventListener('fb-recovery', h); return () => window.removeEventListener('fb-recovery', h); }, []);
   useEffect(() => { if (!ready || DEMO) return; try { registerDevice(); } catch (e) { console.error(e); } if (!devAsked()) setSetup(true); }, [ready]);
+  /* App-Admin: Hinweis auf neue Registrierungen */
+  useEffect(() => { if (!ready || DEMO || !sb || isAdminView()) return; sb.rpc('is_app_admin').then(r => { if (!r || !r.data) return; return sb.rpc('admin_users').then(u => {
+    const told = Math.max(+(lsGet('fb-adm-told') || 0), +(lsGet('fb-adm-seen') || 0)); const n = (u.data || []).filter(x => new Date(x.created_at).getTime() > told);
+    window.__admNew = n.length; window.dispatchEvent(new CustomEvent('fb-family'));
+    if (n.length && told) { lsSet('fb-adm-told', String(Date.now())); setTimeout(() => toast(n.length === 1 ? 'Neue Registrierung: ' + n[0].email + ' – siehe Admin' : n.length + ' neue Registrierungen – siehe Admin'), 1500); } else if (!told) lsSet('fb-adm-told', String(Date.now())); }); }).catch(() => {}); }, [ready]);
   useEffect(() => { const h = () => setView(fromHash()); window.addEventListener('hashchange', h); return () => window.removeEventListener('hashchange', h); }, []);
   useEffect(() => { let t; const h = e => { setMsg(e.detail); clearTimeout(t); t = setTimeout(() => setMsg(''), 3200); }; window.addEventListener('fb-toast', h); return () => window.removeEventListener('fb-toast', h); }, []);
   useEffect(() => { if (!sb) return; sb.auth.getSession().then(r => { if (window.__fbRecovery) setRecovery(true); setAuth(r.data && r.data.session && !window.__fbRecovery ? 'fam' : 'out'); }); }, []);
@@ -3302,7 +3365,7 @@ function App(){
   if (auth === 'wait' || auth === 'fam') return html`<div class="loading" style="padding:24px">Familienplaner wird geladen …</div>`;
   if (auth === 'out') return html`<${Login} recovery=${recovery} onDone=${() => { window.__fbRecovery = false; setRecovery(false); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} setAuth('fam'); }} onDemo=${() => { startDemo(); setReady(true); setAuth('demo'); }} />`;
   if (auth === 'nofam') return loadErr ? html`<div class="main"><div class="hint warn" role="alert">${loadErr}</div><button type="button" class="btn" onClick=${() => location.reload()}>Neu laden</button></div>` : html`<${FamilyStart} onDone=${() => { showFamilyPath(); setAuth('in'); }} />`;
-  if (auth === 'in' && isAdminView()) return html`<${AdminFamilies} />`;
+  if (auth === 'in' && isAdminView()) return html`<${AdminFamilies} />${msg ? html`<div class="toast" role="status">${msg}</div>` : null}`;
   const V = view === 'check' ? Check : { heute: Heute, kalender: Kalender, schule: Schule, einkauf: Einkauf, essen: Essen, sterne: Sterne }[view];
   return html`<div class="app">
     <nav class="nav" aria-label="Hauptmenü">
@@ -3325,7 +3388,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '67';
+const APP_VER = '68';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
