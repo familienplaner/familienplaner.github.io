@@ -15,7 +15,7 @@
       "purpose": "any"
     }
   ],
-  "name": "Familienboard",
+  "name": "Familienplaner",
   "short_name": "Familie",
   "start_url": "/",
   "scope": "/",
