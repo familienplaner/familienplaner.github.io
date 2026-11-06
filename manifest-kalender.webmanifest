@@ -16,7 +16,7 @@
     }
   ],
   "id": "./?seite=kalender",
-  "name": "Familienboard – Kalender",
+  "name": "Familienplaner – Kalender",
   "short_name": "Kalender",
   "start_url": "/?seite=kalender",
   "scope": "/"
