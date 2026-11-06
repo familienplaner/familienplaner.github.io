@@ -1380,11 +1380,17 @@ function TimeField({ label, value, onChange, placeholder, id, style }){
   return html`<label class="field" style=${style || ''}>${label}<input id=${id} inputmode="numeric" autocomplete="off" placeholder=${placeholder || 'z. B. 7:45'} value=${t}
     style=${bad ? 'border-color:var(--danger)' : ''} onInput=${e => typed(e.target.value)} onBlur=${blur} /></label>`;
 }
+/* Große Eingabezeile oben nur am Kühlschrank (Samsung Family Hub / Tizen): dort verdeckt die Bildschirmtastatur das Feld.
+   Am PC und Handy nicht nötig. Zum Testen: ?eingabezeile=an bzw. =aus (wird gemerkt). */
+const needTypeBar = () => { try { const q = new URLSearchParams(location.search).get('eingabezeile'); if (q) lsSet('fb-typebar', q === 'an' ? '1' : '0'); const o = lsGet('fb-typebar'); if (o === '1') return true; if (o === '0') return false; } catch (e) {}
+  const ua = navigator.userAgent || ''; if (/Tizen|Family ?Hub|SMART-TV|SmartTV/i.test(ua)) return true;
+  return !/Android|iPhone|iPad|iPod|Windows|Macintosh|CrOS|X11/i.test(ua) && (navigator.maxTouchPoints || 0) > 0 && innerHeight > innerWidth && innerWidth >= 1000; };
 function TypePreview(){
   const [st, setSt] = useState(null);
   const [pos, setPos] = useState('top:0'); const [hide, setHide] = useState(false);
   const pv = useRef(null); const curRef = useRef(null);
   useEffect(() => {
+    if (!needTypeBar()) return;
     let maxH = window.innerHeight;
     const ok = el => el && el !== pv.current && ((el.tagName === 'INPUT' && !/^(checkbox|radio|file|button|submit|range|color|hidden|date|time)$/i.test(el.type)) || el.tagName === 'TEXTAREA');
     const lab = el => { const l = el.getAttribute('aria-label') || (el.labels && el.labels[0] && el.labels[0].firstChild && el.labels[0].firstChild.nodeType === 3 ? el.labels[0].firstChild.textContent : '') || el.placeholder || 'Eingabe'; return l.trim(); };
@@ -3285,7 +3291,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '61';
+const APP_VER = '62';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
