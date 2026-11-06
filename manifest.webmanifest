@@ -1,0 +1,72 @@
+{
+  "background_color": "#EEF1F6",
+  "theme_color": "#2F5BD3",
+  "display": "fullscreen",
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "name": "Familienboard",
+  "short_name": "Familie",
+  "start_url": "/",
+  "scope": "/",
+  "shortcuts": [
+    {
+      "name": "Einkaufsliste",
+      "short_name": "Einkaufsliste",
+      "url": "/?seite=einkauf",
+      "icons": [
+        {
+          "src": "/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Kalender",
+      "short_name": "Kalender",
+      "url": "/?seite=kalender",
+      "icons": [
+        {
+          "src": "/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Essensplan",
+      "short_name": "Essensplan",
+      "url": "/?seite=essen",
+      "icons": [
+        {
+          "src": "/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Sterne",
+      "short_name": "Sterne",
+      "url": "/?seite=sterne",
+      "icons": [
+        {
+          "src": "/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
+}
