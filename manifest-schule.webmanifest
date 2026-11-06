@@ -16,7 +16,7 @@
     }
   ],
   "id": "./?seite=schule",
-  "name": "Familienboard – Schule",
+  "name": "Familienplaner – Schule",
   "short_name": "Schule",
   "start_url": "/?seite=schule",
   "scope": "/"
