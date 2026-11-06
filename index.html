@@ -2619,15 +2619,55 @@ function TimetableImport({ kid, onClose }){
 
 /* ---------- EINKAUF ---------- */
 const QUICK = ['Milch','Brot','Eier','Butter','Bananen','Äpfel','Joghurt','Nudeln','Käse','Klopapier'];
+const shopKey = n => (n || '').trim().toLowerCase();
+/* Zählt mit, was eingetragen wird (für „Oft gekauft“) */
+function countShop(names){ try { const st = (mem_ && mem_.docs['config/shopstats']) || {}; const c = Object.assign({}, st.counts || {});
+  names.forEach(n => { const k = shopKey(n); if (!k) return; const o = c[k] || { n: 0 }; c[k] = { n: (o.n || 0) + 1, name: n, last: Date.now() }; });
+  const keys = Object.keys(c); if (keys.length > 300) keys.sort((a, b) => (c[a].last || 0) - (c[b].last || 0)).slice(0, keys.length - 300).forEach(k => delete c[k]);
+  S.set('config/shopstats', { counts: c, updatedAt: Date.now() }); } catch (e) {} }
+function QuickShop({ open, addMany }){
+  const qd = useDoc('config/quickshop'); const st = useDoc('config/shopstats');
+  const [edit, setEdit] = useState(false); const [adding, setAdding] = useState(false); const [nv, setNv] = useState('');
+  const list = qd && Array.isArray(qd.list) ? qd.list : QUICK;
+  const save = l => S.set('config/quickshop', { list: l, updatedAt: Date.now() });
+  const onList = n => open.some(i => shopKey(i.name) === shopKey(n));
+  const inQuick = n => list.some(q => shopKey(q) === shopKey(n));
+  const counts = (st && st.counts) || {};
+  const often = Object.keys(counts).filter(k => counts[k].n >= 2 && !inQuick(counts[k].name)).sort((a, b) => counts[b].n - counts[a].n || (counts[b].last || 0) - (counts[a].last || 0)).slice(0, 10).map(k => counts[k]);
+  const addQuick = e => { e && e.preventDefault(); const t = nv.trim(); if (!t) return; const n = t[0].toUpperCase() + t.slice(1);
+    if (inQuick(n)) { toast(n + ' gibt es schon'); return; } save(list.concat([n])); setNv(''); setAdding(false); toast(n + ' als Schnell-Knopf angelegt'); };
+  const chip = (n, extra) => { const on = onList(n);
+    return edit ? html`<button type="button" class="chip" style="color:var(--danger)" aria-label=${n + ' als Schnell-Knopf entfernen'} onClick=${() => save(list.filter(q => q !== n))}>× ${n}</button>`
+      : html`<button type="button" class="chip" disabled=${on} style=${on ? 'opacity:.45' : ''} aria-label=${on ? n + ' steht schon auf der Liste' : n + ' hinzufügen'} onClick=${() => addMany([n])}>${on ? '✓' : '+'} ${n}${extra || ''}</button>`; };
+  return html`<div class="card">
+    <div class="row" style="justify-content:space-between"><h2 style="font-size:18px">Schnell hinzufügen</h2>
+      <button type="button" class=${'btn small ' + (edit ? '' : 'ghost')} aria-pressed=${edit} onClick=${() => { setEdit(!edit); setAdding(false); }}>${edit ? 'Fertig' : 'Bearbeiten'}</button></div>
+    ${edit ? html`<div class="sub" style="font-size:13px">× entfernt einen Knopf. Unten neue Knöpfe anlegen oder oft Gekauftes mit 📌 festmachen.</div>` : null}
+    <div class="row" style="gap:8px">${list.map(n => chip(n))}
+      ${adding ? null : html`<button type="button" class="chip" style="border-style:dashed" onClick=${() => setAdding(true)}>+ Eigener Eintrag</button>`}</div>
+    ${adding ? html`<form data-quick="1" class="row" style="flex-wrap:nowrap" onSubmit=${addQuick}>
+        <input id="quick-new" class="input" style="flex:1;min-width:0" value=${nv} onInput=${e => setNv(e.target.value)} placeholder="Neuer Schnell-Knopf, z. B. Kaffee" autocomplete="off" />
+        <button class="btn small" type="submit" disabled=${!nv.trim()}>Anlegen</button><button type="button" class="btn small ghost" onClick=${() => { setAdding(false); setNv(''); }}>Abbrechen</button></form>` : null}
+    ${edit && qd ? html`<button type="button" class="btn small ghost" style="align-self:flex-start" onClick=${() => save(QUICK.slice())}>Standard-Knöpfe wiederherstellen</button>` : null}
+    ${often.length ? html`<h3 style="font-size:15px;color:var(--muted);margin-top:4px">Oft gekauft</h3>
+      <div class="row" style="gap:8px">${often.map(o => edit
+        ? html`<button type="button" class="chip" aria-label=${o.name + ' als Schnell-Knopf festmachen'} onClick=${() => save(list.concat([o.name]))}>📌 ${o.name}</button>`
+        : chip(o.name, html` <span style="opacity:.55;font-weight:700">${o.n}×</span>`))}</div>` : null}
+  </div>`;
+}
 function Einkauf(){
   const items = useCol('shopping');
   const [who, setWho] = useState(() => getMe() || parentId());
   const [text, setText] = useState('');
   const [heard, setHeard] = useState('');
   const inputRef = useRef(null);
-  const addMany = names => names.forEach(n => S.add('shopping', { name: n, by: who, done: false }));
+  const addMany = names => { const have = new Set((items || []).filter(i => !i.done).map(i => shopKey(i.name))); const seen = new Set();
+    const neu = names.filter(n => { const k = shopKey(n); if (!k || have.has(k) || seen.has(k)) return false; seen.add(k); return true; });
+    const dup = names.filter(n => neu.indexOf(n) < 0 && shopKey(n));
+    if (dup.length) toast(dup.join(', ') + (dup.length === 1 ? ' steht' : ' stehen') + ' schon auf der Liste');
+    neu.forEach(n => S.add('shopping', { name: n, by: who, done: false })); if (neu.length) countShop(neu); return neu; };
   const splitWords = t => t.replace(/^(wir brauchen( noch)?|ich brauche|bitte|kauf( mal)?)\s+/i,'').split(/,|\bund\b|\bsowie\b/i).map(s => s.trim().replace(/[.!?]+$/,'')).filter(Boolean).map(s => s[0].toUpperCase() + s.slice(1));
-  const voice = useVoice(t => { const list = splitWords(t); addMany(list); setHeard('„' + t + '“ → ' + list.join(', ') + ' hinzugefügt'); });
+  const voice = useVoice(t => { const list = splitWords(t); const neu = addMany(list); setHeard('„' + t + '“ → ' + (neu.length ? neu.join(', ') + ' hinzugefügt' : 'stand schon auf der Liste')); });
   useEffect(() => { if (voice.fallback && inputRef.current) inputRef.current.focus(); }, [voice.fallback]);
   const add = e => { e && e.preventDefault(); const list = splitWords(text); if (!list.length) return; addMany(list); setText(''); voice.clearFallback(); };
   const all = (items || []).slice().sort((a,b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -2663,8 +2703,7 @@ function Einkauf(){
         </div>
       </div>
       <aside>
-        <div class="card"><h2 style="font-size:18px">Schnell hinzufügen</h2>
-          <div class="row" style="gap:8px">${QUICK.map(q => html`<button type="button" class="chip" onClick=${() => addMany([q])}>+ ${q}</button>`)}</div></div>
+        <${QuickShop} open=${open} addMany=${addMany} />
       </aside>
     </div>`;
 }
@@ -3449,7 +3488,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '71';
+const APP_VER = '72';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
