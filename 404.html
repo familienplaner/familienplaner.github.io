@@ -3211,7 +3211,7 @@ function MemberForm({ m, list, onDone }){
       : html`<div class="field">Bezeichnung (optional)<div class="row" style="gap:6px">${ROLE_SUG.map(r => html`<button type="button" class="chip" aria-pressed=${f.role === r} onClick=${() => up('role', f.role === r ? '' : r)}>${r}</button>`)}</div>
         <input id="mf-role" value=${f.role} onInput=${e => up('role', e.target.value)} placeholder="oder selbst eintippen" /></div>`}
       <div class="field">Kürzel<div class="row" style="gap:8px">${shortSug(f.name).map(v => { const t = takenShort(v); return html`<button type="button" class="avatar avatar-btn" disabled=${t} aria-pressed=${short === v} aria-label=${'Kürzel ' + v + (t ? ' (schon vergeben)' : '')} title=${t ? 'schon vergeben' : v}
-          style=${'background:var(--pt-' + f.color + ');color:var(--pm-' + f.color + ');border-color:' + (short === v ? 'var(--pm-' + f.color + ')' : 'transparent') + (t ? ';opacity:.3' : '')} onClick=${() => up('short', v)}>${v}</button>`; })}</div>
+          style=${'background:var(--pt-' + f.color + ');color:var(--pm-' + f.color + ');border-color:' + (short === v ? 'var(--pm-' + f.color + ')' : 'transparent') + (t ? ';opacity:.3' : '')} onClick=${() => up('short', f.short === v ? '' : v)}>${v}</button>`; })}</div>
         ${takenShort(short) ? html`<span class="sub" style="font-size:13px;color:var(--warn-ink)">Dieses Kürzel hat schon jemand – besser ein anderes wählen.</span>` : null}</div>
       <div class="field">Farbe<div class="row" style="gap:8px">${PALETTE.map(p => html`<${Swatch} k=${p[0]} on=${f.color === p[0]} taken=${others.some(o => o.color === p[0])} onClick=${() => up('color', p[0])} />`)}</div></div>
       <label class="field">Wird auch so genannt (für die Spracheingabe, mit Komma trennen)<input id="mf-alias" value=${f.aliases || ''} onInput=${e => up('aliases', e.target.value)} placeholder="z. B. Omi, Rita" /></label>
@@ -3325,7 +3325,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '65';
+const APP_VER = '66';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
