@@ -189,6 +189,7 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .shot{max-height:220px;max-width:100%;border-radius:14px;border:1px solid var(--line);object-fit:contain;align-self:flex-start}
 .file{display:flex;align-items:center;justify-content:center;gap:10px;min-height:120px;border:2px dashed var(--line);border-radius:18px;font-weight:800;color:var(--muted);cursor:pointer;text-align:center;padding:12px}
 .file input{position:absolute;width:1px;height:1px;opacity:0}
+.bkp summary::-webkit-details-marker{display:none}.bkp[open] summary{opacity:.75}
 .check{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;border-radius:14px;background:var(--surface-2);font-weight:700}
 .check input{width:22px;height:22px;margin-top:2px;flex-shrink:0}
 .ovx{overflow-x:auto}
@@ -1330,13 +1331,38 @@ function Sheet({ title, onClose, children, wide }){
     </div>
   </div>`;
 }
+/* Kamera: am Handy/Tablet öffnet sich direkt die Kamera-App, am Rechner/Kühlschrank ein Live-Bild der Webcam */
+const isMobileCam = () => { const ua = navigator.userAgent || ''; return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1); };
+function LiveCam({ onShot, onClose }){
+  const ref = useRef(null); const [err, setErr] = useState(''); const [ready, setReady] = useState(false);
+  useEffect(() => { let s = null, off = false;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { setErr('Dieses Gerät erlaubt keinen Kamerazugriff im Browser.'); return; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
+      .then(st => { if (off) { st.getTracks().forEach(t => t.stop()); return; } s = st; const v = ref.current; if (v) { v.srcObject = st; v.onloadedmetadata = () => setReady(true); v.play().catch(() => {}); } })
+      .catch(e => setErr(e && e.name === 'NotAllowedError' ? 'Der Kamerazugriff wurde nicht erlaubt. Bitte im Browser die Kamera für diese Seite freigeben.' : 'Keine Kamera gefunden.'));
+    return () => { off = true; if (s) s.getTracks().forEach(t => t.stop()); }; }, []);
+  const snap = () => { const v = ref.current; if (!v || !v.videoWidth) return; const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0); c.toBlob(b => { if (b) onShot(new File([b], 'kamera.jpg', { type: 'image/jpeg' })); }, 'image/jpeg', 0.92); };
+  return html`<div class="card" style="display:flex;flex-direction:column;gap:10px;padding:12px">
+    ${err ? html`<div class="hint warn" role="alert">${err}</div>` : html`<video ref=${ref} playsinline muted autoplay style="width:100%;max-height:60vh;border-radius:14px;background:#000"></video>`}
+    <div class="row">${err ? null : html`<button type="button" class="btn" disabled=${!ready} onClick=${snap}><${Icon} n="camera" size=${20} />Foto aufnehmen</button>`}
+      <button type="button" class="btn ghost" onClick=${onClose}>${err ? 'Schließen' : 'Abbrechen'}</button></div></div>`;
+}
 function FilePick({ file, setFile, label }){
-  const [url, setUrl] = useState(null);
+  const [url, setUrl] = useState(null); const [cam, setCam] = useState(false);
   useEffect(() => { if (!file) { setUrl(null); return; } const u = URL.createObjectURL(file); setUrl(u); return () => URL.revokeObjectURL(u); }, [file]);
+  const pick = e => { const f = e.target.files && e.target.files[0] || null; e.target.value = ''; if (f) setFile(f); };
+  const mob = isMobileCam();
+  if (cam) return html`<${LiveCam} onShot=${f => { setCam(false); setFile(f); }} onClose=${() => setCam(false)} />`;
   return html`<div style="display:flex;flex-direction:column;gap:10px">
-    <label class="file"><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange=${e => setFile(e.target.files && e.target.files[0] || null)} />
-      <${Icon} n="camera" size=${28} /><span>${file ? 'Anderes Bild wählen' : label}</span></label>
-    ${url ? html`<img class="shot" src=${url} alt="Gewählter Screenshot" />` : null}
+    <div class="row" style="gap:10px;align-items:stretch">
+      ${mob ? html`<label class="file" style="flex:1 1 200px"><input type="file" accept="image/*" capture="environment" onChange=${pick} />
+          <${Icon} n="camera" size=${28} /><span>${file ? 'Neues Foto aufnehmen' : 'Mit der Kamera fotografieren'}</span></label>`
+        : html`<button type="button" class="file" style="flex:1 1 200px;background:none;font:inherit;font-weight:800" onClick=${() => setCam(true)}>
+          <${Icon} n="camera" size=${28} /><span>${file ? 'Neues Foto aufnehmen' : 'Mit der Kamera fotografieren'}</span></button>`}
+      <label class="file" style="flex:1 1 200px"><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange=${pick} />
+        <${Icon} n="plus" size=${28} /><span>${file ? 'Anderes Bild wählen' : label}</span></label></div>
+    ${url ? html`<img class="shot" src=${url} alt="Gewähltes Bild" />` : null}
   </div>`;
 }
 
@@ -2346,7 +2372,7 @@ function EventImport({ now, onClose }){
     toast(n + (n === 1 ? ' Termin' : ' Termine') + ' gespeichert'); onClose();
   };
   return html`<${Sheet} title="Termine per Screenshot" onClose=${onClose} wide>
-    <${FilePick} file=${file} setFile=${f => { setFile(f); setFound(null); setErr(''); }} label="Screenshot oder Foto wählen (Elternbrief, Einladung, Plan …)" />
+    <${FilePick} file=${file} setFile=${f => { setFile(f); setFound(null); setErr(''); }} label="Screenshot oder Bild wählen (Elternbrief, Einladung, Plan …)" />
     ${!found ? html`<button type="button" class="btn" disabled=${!file || busy} onClick=${run}>${busy ? 'Wird gelesen … (kann bis zu einer Minute dauern)' : 'Termine erkennen'}</button>` : null}
     ${err ? html`<div class="hint warn" role="alert">${err}</div>` : null}
     ${found && found.length ? html`<div class="list">
@@ -2417,7 +2443,7 @@ function Schule({ now }){
                 return out; })()}
             </div></div>
             <div class="row" style="justify-content:space-between">
-              <span class="sub" style="font-size:13px">Tippe auf eine Stunde, um sie zu ändern.</span>
+              <span class="sub" style="font-size:13px">Tippe auf eine Stunde, um sie zu ändern oder die Zeile zu löschen.</span>
               <div class="row">
                 <button type="button" class="btn small ghost" onClick=${() => S.set('timetables/' + kid, Object.assign({}, tt, { times: tt.times.concat(['']), days: tt.days.map(d => (d || []).concat([null])) }))}>+ Stunde</button>
                 <button type="button" class="btn small soft" onClick=${() => setSheet({ kind:'shot' })}><${Icon} n="camera" size=${18} />Neu einlesen</button>
@@ -2523,6 +2549,10 @@ function ExamForm({ kid, subjects, now }){
   </form>`;
 }
 function CellEdit({ kid, tt, at, subjects, onClose }){
+  const [conf, setConf] = useState(false);
+  const delRow = () => { const cut = a => (a || []).filter((x, j) => j !== at.ri);
+    const ends = tt.times.map((x, j) => (tt.ends && tt.ends[j]) || hm2(lessonEnd(tt, j)));
+    S.set('timetables/' + kid, Object.assign({}, tt, { times: cut(tt.times), ends: cut(ends), days: tt.days.map(d => cut(d)), updatedAt: Date.now() })); toast((at.ri + 1) + '. Stunde gelöscht'); onClose(); };
   const [v, setV] = useState(at.f); const [time, setTime] = useState(tt.times[at.ri] || ''); const [endT, setEndT] = useState(hm2(lessonEnd(tt, at.ri)));
   const save = val => { const days = tt.days.map(d => (d || []).slice()); days[at.di][at.ri] = val ? val.trim() : null;
     const times = tt.times.slice(); times[at.ri] = time;
@@ -2536,6 +2566,10 @@ function CellEdit({ kid, tt, at, subjects, onClose }){
         <label class="field" style="flex:1">Ende dieser Stunde<input id="cell-end" value=${endT} onInput=${e => setEndT(e.target.value)} placeholder="z. B. 8:45" /></label></div>
       <div class="sub" style="font-size:13px">Gilt für alle Tage. Zwischen zwei Stunden entsteht automatisch eine Pause.</div>
       <div class="row"><button class="btn" type="submit">Speichern</button><button type="button" class="btn ghost" onClick=${() => save('')}>Stunde frei</button></div>
+      ${tt.times.length > 1 ? (conf ? html`<div class="hint warn"><b>Die ganze ${at.ri + 1}. Stunde löschen?</b> Die Zeile verschwindet an allen Tagen, die Stunden darunter rücken nach oben.
+          <div class="row" style="margin-top:8px"><button type="button" class="btn small" style="background:var(--danger);color:#fff" onClick=${delRow}><${Icon} n="bin" size=${16} />Zeile löschen</button>
+          <button type="button" class="btn small ghost" onClick=${() => setConf(false)}>Abbrechen</button></div></div>`
+        : html`<button type="button" class="btn ghost" style="color:var(--danger)" onClick=${() => setConf(true)}><${Icon} n="bin" size=${18} />Ganze Zeile löschen (alle Tage)</button>`) : null}
     </form>
   <//>`;
 }
@@ -2557,7 +2591,7 @@ function TimetableImport({ kid, onClose }){
     setBusy(false);
   };
   return html`<${Sheet} title=${'Stundenplan einlesen · ' + byId[kid].name} onClose=${onClose} wide>
-    <${FilePick} file=${file} setFile=${f => { setFile(f); setRes(null); setErr(''); }} label="Foto oder Screenshot vom Stundenplan wählen" />
+    <${FilePick} file=${file} setFile=${f => { setFile(f); setRes(null); setErr(''); }} label="Screenshot oder Bild vom Stundenplan wählen" />
     ${!res ? html`<button type="button" class="btn" disabled=${!file || busy} onClick=${run}>${busy ? 'Wird gelesen … (kann bis zu einer Minute dauern)' : 'Stundenplan erkennen'}</button>` : null}
     ${err ? html`<div class="hint warn" role="alert">${err}</div>` : null}
     ${res ? html`<div class="hint">Bitte kurz prüfen. Einzelne Stunden kannst du danach antippen und ändern.</div>
@@ -3087,16 +3121,16 @@ function BackupCard(){
   const list = Object.keys(mem.docs).filter(k => k.indexOf('backup/') === 0).sort().reverse();
   const [sel, setSel] = useState(null);
   const dl = key => { try { const b = mem.docs[key]; const blob = new Blob([JSON.stringify(b, null, 1)], { type: 'application/json' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'familienboard-' + key.slice(7) + '.json'; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { toast('Herunterladen ging nicht'); } };
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'familienplaner-' + key.slice(7) + '.json'; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { toast('Herunterladen ging nicht'); } };
   const restore = async key => { if (!(await needPin(parentId(), 'Sicherung wiederherstellen – Super-PIN von Mama oder Papa', true))) return;
     if (await restoreBackup(key)) { toast('Stand vom ' + fromIso(key.slice(7)).toLocaleDateString('de-DE') + ' wiederhergestellt'); setSel(null); } };
   return html`<div class="card">
     <h2 style="font-size:20px;display:flex;align-items:center;gap:8px"><${Icon} n="undo" size=${20} />Datensicherung</h2>
     <div class="sub" style="font-size:14px">Jede Nacht um 0 Uhr wird alles gesichert (die letzten ${BACKUP_KEEP} Tage bleiben erhalten). Läuft gerade kein Gerät, holt das erste Gerät die Sicherung nach.</div>
-    ${list.length ? html`<div class="list">${list.map(k => html`<div class="li"><div class="tx"><b>${fromIso(k.slice(7)).toLocaleDateString('de-DE', { weekday:'short', day:'numeric', month:'numeric', year:'numeric' })}</b>
+    ${list.length ? html`<details class="bkp"><summary class="btn small ghost" style="align-self:flex-start;list-style:none;cursor:pointer">${list.length} Sicherungen anzeigen · letzte: ${fromIso(list[0].slice(7)).toLocaleDateString('de-DE', { day:'numeric', month:'numeric' })}</summary><div class="list" style="margin-top:10px">${list.map(k => html`<div class="li"><div class="tx"><b>${fromIso(k.slice(7)).toLocaleDateString('de-DE', { weekday:'short', day:'numeric', month:'numeric', year:'numeric' })}</b>
         <span>${mem.docs[k].at ? 'gesichert um ' + new Date(mem.docs[k].at).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' }) + ' Uhr' : ''}</span></div>
         ${sel === k ? html`<button type="button" class="btn small" style="background:var(--danger);color:#fff" onClick=${() => restore(k)}>Wirklich zurück?</button><button type="button" class="btn small ghost" onClick=${() => setSel(null)}>Nein</button>`
-          : html`<button type="button" class="btn small ghost" onClick=${() => dl(k)}>Laden</button><button type="button" class="btn small ghost" onClick=${() => setSel(k)}>Wiederherstellen</button>`}</div>`)}</div>`
+          : html`<button type="button" class="btn small ghost" onClick=${() => dl(k)}>Laden</button><button type="button" class="btn small ghost" onClick=${() => setSel(k)}>Wiederherstellen</button>`}</div>`)}</div></details>`
       : html`<div class="sub" style="font-size:14px">Die erste Sicherung entsteht in wenigen Sekunden.</div>`}
   </div>`;
 }
@@ -3291,7 +3325,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '62';
+const APP_VER = '65';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
