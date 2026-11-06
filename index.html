@@ -3155,14 +3155,14 @@ const VIEWS = [
   { id:'sterne', label:'Sterne', icon:'trophy' }
 ];
 /* ---------- FAMILIE VERWALTEN (Admin) ---------- */
-const EMOJI_SHORT = ['🐻','🦊','🐱','🐶','🦁','🐸','🐼','🦄','🐝','⭐','🚜','🌻'];
+const EMOJI_SHORT = ['🐻','🦊','🐱','🐶','🦁','🐸','🐼','🦄','🐝','🐰','🐯','🐨','🐵','🐷','🐮','🐴','🐧','🦉','🐢','🐬','🦋','🐞','⭐','🌈','🌻','🍓','⚽','🎸','🚀','🚜'];
 const ROLE_SUG = ['Papa','Mama','Oma','Opa','Tante','Onkel','Babysitter'];
 const slugId = (name, list) => { let b = (name || 'person').toLowerCase().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').replace(/[^a-z0-9]+/g,'').slice(0, 16) || 'person';
   if (b === 'familie') b = 'person'; let id = b, i = 2; while (list.some(m => m.id === id)) id = b + (i++); return id; };
 const memberList = () => { const d = mem_ && mem_.docs['config/members']; return d && Array.isArray(d.list) && d.list.some(m => !m.hidden) ? d.list : fallbackMembers(); };
 const saveMembers = l => S.set('config/members', { list: l.map(m => { const o = Object.assign({}, m); Object.keys(o).forEach(k => { if (o[k] === undefined) delete o[k]; }); return o; }), updatedAt: Date.now() });
 const shortOf = m => m.short || (m.name || '?')[0];
-const shortSug = name => { const n = (name || '').trim(); if (!n) return EMOJI_SHORT.slice(0, 6);
+const shortSug = name => { const n = (name || '').trim(); if (!n) return EMOJI_SHORT.slice();
   const A = n[0].toUpperCase(); const parts = n.split(/\s+/);
   const s = [A, A + (n[1] || '').toLowerCase(), parts.length > 1 ? A + parts[1][0].toUpperCase() : A + (n[n.length - 1] || '').toLowerCase()];
   return Array.from(new Set(s.filter(x => x && x.trim()))).concat(EMOJI_SHORT); };
@@ -3325,7 +3325,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '66';
+const APP_VER = '67';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
