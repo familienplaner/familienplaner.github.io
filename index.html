@@ -7,6 +7,7 @@
 <script>
 /* Direktlinks: ?seite=einkauf (oder kalender, schule, essen, sterne) öffnet gleich diese Seite –
    auch als Verknüpfung auf dem Startbildschirm (eigenes Manifest pro Seite). */
+window.__fbRecovery = /type=recovery/.test(location.hash + location.search);
 (function(){ var q = new URLSearchParams(location.search); var v = (q.get('seite') || q.get('view') || '').toLowerCase();
   var ok = ['heute','kalender','schule','einkauf','essen','sterne'].indexOf(v) >= 0;
   if (ok && !location.hash) history.replaceState(null, '', location.pathname + location.search + '#' + v);
@@ -1022,6 +1023,8 @@ const CONFIGURED = SUPABASE_URL.indexOf('HIER_') !== 0 && SUPABASE_KEY.indexOf('
 
 /* ---------- Speicher (Supabase, geteilt, live) ---------- */
 const sb = CONFIGURED && window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true } }) : null;
+/* Link aus „Passwort vergessen“: sofort merken, bevor die App startet */
+if (sb) { try { sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') { window.__fbRecovery = true; window.dispatchEvent(new CustomEvent('fb-recovery')); } }); } catch (e) {} }
 let resolveReady; const dbReady = new Promise(r => (resolveReady = r));
 const mem = { docs:{}, subs:new Set() };
 const memNotify = () => mem.subs.forEach(f => f());
@@ -2757,6 +2760,7 @@ function Check(){
 function Login({ onDone, onDemo, recovery }){
   const invited = !!joinFromUrl();
   const [mode, setMode] = useState(recovery ? 'newpw' : invited ? 'signup' : 'login');
+  useEffect(() => { if (recovery) setMode('newpw'); }, [recovery]);
   const [fam, setFam] = useState(null);
   useEffect(() => { const sl = pathSlug(); if (!sl || !sb) return;
     sb.rpc('family_by_slug', { p_slug: sl }).then(r => { const f = r && r.data; if (!f) return; setFam(f);
@@ -3240,13 +3244,12 @@ function App(){
   const now = useNow();
   const mdoc = useDoc('config/members'); applyMembers(mdoc);
   const [setup, setSetup] = useState(false);
-  const [recovery, setRecovery] = useState(/type=recovery/.test(location.hash));
-  useEffect(() => { if (!sb) return; const { data } = sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') { setRecovery(true); setAuth('out'); } });
-    return () => { try { data.subscription.unsubscribe(); } catch (e) {} }; }, []);
+  const [recovery, setRecovery] = useState(!!window.__fbRecovery);
+  useEffect(() => { const h = () => { setRecovery(true); setAuth('out'); }; window.addEventListener('fb-recovery', h); return () => window.removeEventListener('fb-recovery', h); }, []);
   useEffect(() => { if (!ready || DEMO) return; try { registerDevice(); } catch (e) { console.error(e); } if (!devAsked()) setSetup(true); }, [ready]);
   useEffect(() => { const h = () => setView(fromHash()); window.addEventListener('hashchange', h); return () => window.removeEventListener('hashchange', h); }, []);
   useEffect(() => { let t; const h = e => { setMsg(e.detail); clearTimeout(t); t = setTimeout(() => setMsg(''), 3200); }; window.addEventListener('fb-toast', h); return () => window.removeEventListener('fb-toast', h); }, []);
-  useEffect(() => { if (!sb) return; sb.auth.getSession().then(r => setAuth(r.data && r.data.session && !/type=recovery/.test(location.hash) ? 'fam' : 'out')); }, []);
+  useEffect(() => { if (!sb) return; sb.auth.getSession().then(r => { if (window.__fbRecovery) setRecovery(true); setAuth(r.data && r.data.session && !window.__fbRecovery ? 'fam' : 'out'); }); }, []);
   useEffect(() => { if (auth !== 'fam') return;
     loadFamily().then(f => { showFamilyPath(); setAuth(f ? 'in' : 'nofam'); }).catch(e => { console.error(e); setLoadErr('Deine Familie konnte nicht geladen werden. Bitte Internet prüfen und die Seite neu laden.'); setAuth('nofam'); }); }, [auth]);
   useEffect(() => { if (auth !== 'in') return; try { if (location.search || location.hash.indexOf('access_token') >= 0) history.replaceState(null, '', location.pathname + (VIEWS.some(v => '#' + v.id === location.hash) ? location.hash : '')); } catch (e) {} showFamilyPath();
@@ -3257,7 +3260,7 @@ function App(){
     <div>In der Datei <b>index.html</b> fehlen noch die Supabase-Adresse und der Schlüssel (Anleitung Schritt 3).</div></div>
     ${view === 'check' ? html`<${Check} />` : html`<a class="btn ghost" href="#check">Gerätecheck öffnen</a>`}</div>`;
   if (auth === 'wait' || auth === 'fam') return html`<div class="loading" style="padding:24px">Familienboard wird geladen …</div>`;
-  if (auth === 'out') return html`<${Login} recovery=${recovery} onDone=${() => { setRecovery(false); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} setAuth('fam'); }} onDemo=${() => { startDemo(); setReady(true); setAuth('demo'); }} />`;
+  if (auth === 'out') return html`<${Login} recovery=${recovery} onDone=${() => { window.__fbRecovery = false; setRecovery(false); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} setAuth('fam'); }} onDemo=${() => { startDemo(); setReady(true); setAuth('demo'); }} />`;
   if (auth === 'nofam') return loadErr ? html`<div class="main"><div class="hint warn" role="alert">${loadErr}</div><button type="button" class="btn" onClick=${() => location.reload()}>Neu laden</button></div>` : html`<${FamilyStart} onDone=${() => { showFamilyPath(); setAuth('in'); }} />`;
   if (auth === 'in' && isAdminView()) return html`<${AdminFamilies} />`;
   const V = view === 'check' ? Check : { heute: Heute, kalender: Kalender, schule: Schule, einkauf: Einkauf, essen: Essen, sterne: Sterne }[view];
@@ -3282,7 +3285,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '58';
+const APP_VER = '59';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
