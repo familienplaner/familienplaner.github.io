@@ -3091,10 +3091,14 @@ function InviteCard(){
   useEffect(() => { const h = () => force(x => x + 1); window.addEventListener('fb-family', h); return () => window.removeEventListener('fb-family', h); }, []);
   if (DEMO || !FAMILY) return null;
   const copy = async t => { try { await navigator.clipboard.writeText(t); toast('Kopiert'); } catch (e) { toast('Bitte den Text markieren und kopieren'); } };
+  const share = async () => { const sub = 'Einladung zum Familienplaner';
+    const txt = 'Hallo! Komm mit in unseren Familienplaner „' + FAMILY.name + '“ – dort haben wir Kalender, Einkaufsliste, Essensplan und mehr gemeinsam.\n\nEinfach diesen Link öffnen und einen Zugang anlegen, der Beitrittscode ' + prettyCode(FAMILY.join_code) + ' ist schon eingetragen:\n' + inviteLink();
+    if (navigator.share) { try { await navigator.share({ title: sub, text: txt }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+    location.href = 'mailto:?subject=' + encodeURIComponent(sub) + '&body=' + encodeURIComponent(txt); };
   const renew = async () => { setBusy(true); try { await newFamilyCode(); toast('Neuer Code erstellt – der alte gilt nicht mehr'); } catch (x) { toast(famErr(x)); } setBusy(false); setConf(false); };
   return html`<${FamilyNameCard} /><div class="field">Familie einladen<span class="sub" style="font-size:13px">Wer zu „${FAMILY.name}“ gehören soll (z. B. Partner, Oma, ein weiteres Handy mit eigenem Zugang), registriert sich und gibt diesen Code ein.</span>
     <div class="li" style="flex-wrap:wrap;gap:10px"><div class="tx"><b style="font-size:24px;letter-spacing:3px;user-select:all">${prettyCode(FAMILY.join_code)}</b><span style="white-space:normal;user-select:all">${inviteLink()}</span></div>
-      <div class="row" style="gap:6px"><button type="button" class="btn small" onClick=${() => copy(inviteLink())}>Link kopieren</button>
+      <div class="row" style="gap:6px"><button type="button" class="btn small" onClick=${share}>Einladung versenden</button><button type="button" class="btn small ghost" onClick=${() => copy(inviteLink())}>Link kopieren</button>
         <button type="button" class="btn small ghost" onClick=${() => copy(FAMILY.join_code)}>Code kopieren</button></div></div>
     ${FAMILY.role === 'admin' ? (conf ? html`<div class="hint warn">Neuer Code? Der alte Code und alte Einladungslinks funktionieren dann nicht mehr. Wer schon dabei ist, bleibt dabei.
         <div class="row" style="margin-top:8px"><button type="button" class="btn small" disabled=${busy} onClick=${renew}>Neuen Code erstellen</button><button type="button" class="btn small ghost" onClick=${() => setConf(false)}>Abbrechen</button></div></div>`
@@ -3445,7 +3449,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '70';
+const APP_VER = '71';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
