@@ -16,7 +16,7 @@
     }
   ],
   "id": "./?seite=essen",
-  "name": "Familienboard – Essensplan",
+  "name": "Familienplaner – Essensplan",
   "short_name": "Essensplan",
   "start_url": "/?seite=essen",
   "scope": "/"
