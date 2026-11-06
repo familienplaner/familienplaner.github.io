@@ -16,7 +16,7 @@
     }
   ],
   "id": "./?seite=einkauf",
-  "name": "Familienboard – Einkaufsliste",
+  "name": "Familienplaner – Einkaufsliste",
   "short_name": "Einkaufsliste",
   "start_url": "/?seite=einkauf",
   "scope": "/"
