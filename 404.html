@@ -2634,7 +2634,7 @@ function QuickShop({ open, addMany }){
   const inQuick = n => list.some(q => shopKey(q) === shopKey(n));
   const counts = (st && st.counts) || {};
   const often = Object.keys(counts).filter(k => counts[k].n >= 2 && !inQuick(counts[k].name)).sort((a, b) => counts[b].n - counts[a].n || (counts[b].last || 0) - (counts[a].last || 0)).slice(0, 10).map(k => counts[k]);
-  const addQuick = e => { e && e.preventDefault(); const t = nv.trim(); if (!t) return; const n = t[0].toUpperCase() + t.slice(1);
+  const addQuick = e => { e && e.preventDefault(); const t = nv.trim(); if (!t) return; const n = autoFix(t).text;
     if (inQuick(n)) { toast(n + ' gibt es schon'); return; } save(list.concat([n])); setNv(''); setAdding(false); toast(n + ' als Schnell-Knopf angelegt'); };
   const chip = (n, extra) => { const on = onList(n);
     return edit ? html`<button type="button" class="chip" style="color:var(--danger)" aria-label=${n + ' als Schnell-Knopf entfernen'} onClick=${() => save(list.filter(q => q !== n))}>× ${n}</button>`
@@ -2655,6 +2655,46 @@ function QuickShop({ open, addMany }){
         : chip(o.name, html` <span style="opacity:.55;font-weight:700">${o.n}×</span>`))}</div>` : null}
   </div>`;
 }
+/* Autokorrektur für Einkaufs-Einträge: Großschreibung von Hauptwörtern + kleine Tippfehler (z. B. „körniger frischkäse“ → „Körniger Frischkäse“) */
+const GROC = ('Milch Butter Käse Frischkäse Quark Joghurt Sahne Schmand Schlagsahne Kefir Buttermilch Mozzarella Parmesan Gouda Feta Hüttenkäse Eier Ei Margarine ' +
+  'Brot Brötchen Toast Toastbrot Vollkornbrot Knäckebrot Baguette Croissants Brezeln Laugenbrezeln Kuchen Kekse Zwieback Müsli Haferflocken Cornflakes ' +
+  'Mehl Zucker Puderzucker Salz Pfeffer Öl Olivenöl Essig Senf Ketchup Mayonnaise Mayo Remoulade Soße Sauce Tomatensoße Pesto Brühe Gewürze Paprikapulver Zimt Vanillezucker Backpulver Hefe Honig Marmelade Nutella Nussnougatcreme ' +
+  'Nudeln Spaghetti Penne Reis Couscous Linsen Bohnen Kichererbsen Kartoffeln Pommes Knödel Spätzle Gnocchi Pizza Tiefkühlpizza Lasagne ' +
+  'Äpfel Apfel Bananen Banane Birnen Birne Orangen Mandarinen Clementinen Zitronen Zitrone Limetten Trauben Weintrauben Erdbeeren Himbeeren Heidelbeeren Blaubeeren Kirschen Pfirsiche Nektarinen Pflaumen Melone Wassermelone Ananas Mango Kiwi Avocado Avocados ' +
+  'Tomaten Tomate Gurke Gurken Salatgurke Paprika Zwiebeln Zwiebel Knoblauch Karotten Möhren Möhre Salat Eisbergsalat Feldsalat Rucola Spinat Brokkoli Blumenkohl Zucchini Aubergine Mais Erbsen Champignons Pilze Lauch Porree Sellerie Radieschen Kohlrabi Kohl Rotkohl Weißkohl Sauerkraut Kürbis Ingwer Petersilie Schnittlauch Basilikum Kräuter ' +
+  'Fleisch Hackfleisch Hähnchen Hähnchenbrust Hühnchen Pute Putenbrust Schnitzel Steak Rindfleisch Schweinefleisch Bratwurst Würstchen Wiener Wurst Salami Schinken Kochschinken Speck Leberwurst Aufschnitt Fisch Lachs Thunfisch Fischstäbchen Garnelen ' +
+  'Wasser Mineralwasser Sprudel Saft Apfelsaft Orangensaft Schorle Apfelschorle Limo Limonade Cola Bier Wein Sekt Kaffee Kaffeebohnen Kaffeepads Tee Kakao Kaba Milchreis Pudding ' +
+  'Schokolade Chips Gummibärchen Bonbons Kaugummi Nüsse Erdnüsse Mandeln Popcorn Eis Speiseeis Kaugummis Salzstangen Riegel Müsliriegel ' +
+  'Klopapier Toilettenpapier Küchenrolle Küchenpapier Taschentücher Servietten Alufolie Frischhaltefolie Backpapier Gefrierbeutel Müllbeutel Müllsäcke Spülmittel Spülmaschinentabs Tabs Waschmittel Weichspüler Reiniger Putzmittel Schwämme Batterien Glühbirne ' +
+  'Zahnpasta Zahnbürste Shampoo Duschgel Seife Deo Creme Sonnencreme Rasierer Watte Wattestäbchen Pflaster Windeln Feuchttücher Babybrei Katzenfutter Hundefutter Streu Katzenstreu Brotdose Trinkflasche').split(' ');
+const NOUN_END = ['käse','milch','brot','brötchen','wurst','saft','mehl','zucker','salz','öl','tee','kaffee','sahne','quark','joghurt','fleisch','schinken','nudeln','reis','soße','sauce','chips','papier','mittel','tücher','beutel','folie','creme','gel','tabs','pulver','salat','kuchen','eis','wasser','beeren','kraut','brust','filet','pizza','riegel','flocken','butter','ung','heit','keit','chen','ling','schaft','tät'];
+const ADJ_LAST = ['bio','light','frisch','vegan','vegetarisch','laktosefrei','glutenfrei','fettarm','gerieben','geschnitten','gemahlen','groß','klein','rot','grün','gelb','weiß','extra','natur','pur','naturtrüb','trüb','klar','still','medium','spritzig','mild','scharf','süß','sauer','salzig','halb','ganz'];
+const PREP = ['vom','von','für','mit','ohne','zum','zur','aus','der','die','das','dem','den','vom','im','am','in'];
+const lev = (a, b) => { if (Math.abs(a.length - b.length) > 2) return 9; const d = []; for (let i = 0; i <= a.length; i++) { d[i] = [i]; } for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1)); return d[a.length][b.length]; };
+const cap = w => w ? w[0].toUpperCase() + w.slice(1) : w;
+/* Wortschatz: eingebaute Liste + was die Familie selbst schon eingetragen hat (Schreibweise der Familie gewinnt) */
+function shopVocab(){ const v = new Map(); GROC.forEach(w => v.set(w.toLowerCase(), w));
+  try { const st = (mem_ && mem_.docs['config/shopstats']) || {}; const q = (mem_ && mem_.docs['config/quickshop']) || {};
+    Object.keys(st.counts || {}).map(k => st.counts[k].name).concat(Array.isArray(q.list) ? q.list : QUICK)
+      .forEach(n => (n || '').split(/\s+/).forEach(w => { if (/^[A-ZÄÖÜ][a-zäöüß-]{2,}$/.test(w)) v.set(w.toLowerCase(), w); })); } catch (e) {}
+  return v; }
+function autoFix(item){
+  const vocab = shopVocab(); const keys = Array.from(vocab.keys()); const changes = [];
+  const words = item.trim().split(/\s+/); const alpha = words.map(w => /^[a-zäöüß][a-zäöüß-]*$/i.test(w));
+  const lastIdx = alpha.lastIndexOf(true);
+  const out = words.map((w, i) => { if (!alpha[i]) return w; const lw = w.toLowerCase();
+    if (vocab.has(lw)) return vocab.get(lw);
+    if (lw.length >= 5) { const tol = lw.length >= 8 ? 2 : 1; let best = null, bd = 9;
+      keys.forEach(k => { if (k[0] !== lw[0] || k.startsWith(lw) || lw.startsWith(k)) return; const d = lev(lw, k); if (d < bd) { bd = d; best = k; } });
+      if (best && bd <= tol) { changes.push(w + ' → ' + vocab.get(best)); return vocab.get(best); } }
+    if (NOUN_END.some(e => lw.length > e.length + 1 && lw.endsWith(e)) || NOUN_END.indexOf(lw) >= 0) return cap(w);
+    if (i > 0 && PREP.indexOf(words[i - 1].toLowerCase()) >= 0 && ADJ_LAST.indexOf(lw) < 0) return cap(w);
+    if (i === lastIdx && lastIdx > 0 && ADJ_LAST.indexOf(lw) < 0 && !/^ge.+(en|t)$/.test(lw) && !/(ig|lich|isch|frei|arm|reich|los|er|es|em)$/.test(lw)) return cap(w);
+    return w; });
+  if (out.length) out[0] = cap(out[0]);
+  return { text: out.join(' '), changes };
+}
 function Einkauf(){
   const items = useCol('shopping');
   const [who, setWho] = useState(() => getMe() || parentId());
@@ -2667,9 +2707,10 @@ function Einkauf(){
     if (dup.length) toast(dup.join(', ') + (dup.length === 1 ? ' steht' : ' stehen') + ' schon auf der Liste');
     neu.forEach(n => S.add('shopping', { name: n, by: who, done: false })); if (neu.length) countShop(neu); return neu; };
   const splitWords = t => t.replace(/^(wir brauchen( noch)?|ich brauche|bitte|kauf( mal)?)\s+/i,'').split(/,|\bund\b|\bsowie\b/i).map(s => s.trim().replace(/[.!?]+$/,'')).filter(Boolean).map(s => s[0].toUpperCase() + s.slice(1));
-  const voice = useVoice(t => { const list = splitWords(t); const neu = addMany(list); setHeard('„' + t + '“ → ' + (neu.length ? neu.join(', ') + ' hinzugefügt' : 'stand schon auf der Liste')); });
+  const fixAll = list => { const ch = []; const r = list.map(x => { const f = autoFix(x); ch.push.apply(ch, f.changes); return f.text; }); if (ch.length) setTimeout(() => toast('Korrigiert: ' + ch.join(', ')), 900); return r; };
+  const voice = useVoice(t => { const list = fixAll(splitWords(t)); const neu = addMany(list); setHeard('„' + t + '“ → ' + (neu.length ? neu.join(', ') + ' hinzugefügt' : 'stand schon auf der Liste')); });
   useEffect(() => { if (voice.fallback && inputRef.current) inputRef.current.focus(); }, [voice.fallback]);
-  const add = e => { e && e.preventDefault(); const list = splitWords(text); if (!list.length) return; addMany(list); setText(''); voice.clearFallback(); };
+  const add = e => { e && e.preventDefault(); const list = fixAll(splitWords(text)); if (!list.length) return; addMany(list); setText(''); voice.clearFallback(); };
   const all = (items || []).slice().sort((a,b) => (a.createdAt || 0) - (b.createdAt || 0));
   const open = all.filter(i => !i.done), done = all.filter(i => i.done);
   const flip = i => { const body = Object.assign({}, i); delete body.id; body.done = !i.done; S.set('shopping/' + i.id, body); };
@@ -3488,7 +3529,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '72';
+const APP_VER = '73';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
