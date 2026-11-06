@@ -1020,6 +1020,8 @@ function Art({ k, cls = 'art' }){
 /* ---------- Konfiguration (einmalig eintragen) ---------- */
 const SUPABASE_URL = 'https://bwndvlljbrnhvckhjpqc.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_aF5tnlL8kWn6H8UXVvYVHg_USb7r-ju';
+/* Schutz vor Spam-Anmeldungen (Cloudflare Turnstile). Leer = aus. Erst eintragen, dann in Supabase einschalten. */
+const CAPTCHA_KEY = '';
 const CONFIGURED = SUPABASE_URL.indexOf('HIER_') !== 0 && SUPABASE_KEY.indexOf('HIER_') !== 0;
 
 /* ---------- Speicher (Supabase, geteilt, live) ---------- */
@@ -2797,6 +2799,22 @@ function Check(){
 }
 
 /* ---------- Anmeldung ---------- */
+/* ---------- Sicherheitsprüfung (Cloudflare Turnstile) ---------- */
+let tsLoad = null;
+const loadTurnstile = () => tsLoad || (tsLoad = new Promise((res, rej) => { if (window.turnstile) return res(window.turnstile);
+  const sc = document.createElement('script'); sc.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; sc.async = true;
+  sc.onload = () => res(window.turnstile); sc.onerror = () => { tsLoad = null; rej(new Error('turnstile')); }; document.head.appendChild(sc); }));
+function Captcha({ onToken, rk }){
+  const ref = useRef(null); const [err, setErr] = useState(false);
+  useEffect(() => { if (!CAPTCHA_KEY) return; let id = null, off = false; onToken('');
+    loadTurnstile().then(ts => { if (off || !ref.current) return; ref.current.innerHTML = '';
+      id = ts.render(ref.current, { sitekey: CAPTCHA_KEY, language: 'de', appearance: 'interaction-only', size: 'flexible', callback: t => onToken(t), 'expired-callback': () => onToken(''), 'error-callback': () => onToken('') }); })
+      .catch(() => setErr(true));
+    return () => { off = true; try { if (id != null && window.turnstile) window.turnstile.remove(id); } catch (e) {} }; }, [rk]);
+  if (!CAPTCHA_KEY) return null;
+  return html`<div>${err ? html`<div class="hint warn">Die Sicherheitsprüfung konnte nicht geladen werden. Bitte Internet prüfen und neu laden.</div>` : null}<div ref=${ref}></div></div>`;
+}
+
 function Login({ onDone, onDemo, recovery }){
   const invited = !!joinFromUrl();
   const [mode, setMode] = useState(recovery ? 'newpw' : invited ? 'signup' : 'login');
@@ -2810,30 +2828,34 @@ function Login({ onDone, onDemo, recovery }){
   const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [pw2, setPw2] = useState('');
   const [err, setErr] = useState(''); const [info, setInfo] = useState(''); const [busy, setBusy] = useState(false);
   const back = location.origin + location.pathname;
+  const [ctok, setCtok] = useState(''); const [crk, setCrk] = useState(0); const needCap = !!CAPTCHA_KEY && mode !== 'newpw';
   const sw = m => { setMode(m); setErr(''); setInfo(''); };
   const go = async e => { e.preventDefault(); setErr(''); setInfo('');
     const mail = email.trim();
     if (mode !== 'newpw' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) { setErr('Bitte eine gültige E-Mail-Adresse eingeben.'); return; }
     if ((mode === 'signup' || mode === 'newpw') && pw.length < 8) { setErr('Das Passwort braucht mindestens 8 Zeichen.'); return; }
     if ((mode === 'signup' || mode === 'newpw') && pw !== pw2) { setErr('Die beiden Passwörter sind nicht gleich.'); return; }
+    if (needCap && !ctok) { setErr('Einen Moment, die Sicherheitsprüfung läuft noch. Bitte gleich nochmal tippen.'); return; }
+    const captchaToken = needCap ? ctok : undefined;
     setBusy(true);
     try {
       if (mode === 'login') {
-        const { error } = await sb.auth.signInWithPassword({ email: mail, password: pw });
+        const { error } = await sb.auth.signInWithPassword({ email: mail, password: pw, options: { captchaToken } });
         if (error) setErr(/confirm/i.test(error.message) ? 'Bitte zuerst den Link in der Bestätigungs-Mail antippen.' : 'Anmeldung fehlgeschlagen. E-Mail und Passwort prüfen.'); else onDone();
       } else if (mode === 'signup') {
-        const { data, error } = await sb.auth.signUp({ email: mail, password: pw, options: { emailRedirectTo: back } });
+        const { data, error } = await sb.auth.signUp({ email: mail, password: pw, options: { emailRedirectTo: back, captchaToken } });
         if (error) setErr(/registered|exists/i.test(error.message) ? 'Mit dieser E-Mail gibt es schon einen Zugang. Bitte anmelden.' : /signups? not allowed|disabled/i.test(error.message) ? 'Registrieren ist gerade ausgeschaltet.' : 'Registrieren hat nicht geklappt: ' + error.message);
         else if (data && data.session) onDone();
         else setInfo('Fast geschafft: Wir haben dir eine E-Mail an ' + mail + ' geschickt. Tippe auf den Link darin, dann geht es hier weiter.');
       } else if (mode === 'reset') {
-        const { error } = await sb.auth.resetPasswordForEmail(mail, { redirectTo: back });
+        const { error } = await sb.auth.resetPasswordForEmail(mail, { redirectTo: back, captchaToken });
         if (error) setErr('Das hat nicht geklappt. Bitte später nochmal versuchen.'); else setInfo('Wenn es zu ' + mail + ' einen Zugang gibt, kommt gleich eine E-Mail mit einem Link zum neuen Passwort.');
       } else if (mode === 'newpw') {
         const { error } = await sb.auth.updateUser({ password: pw });
         if (error) setErr('Das neue Passwort konnte nicht gespeichert werden. Bitte den Link aus der E-Mail nochmal öffnen.'); else { toast('Neues Passwort gespeichert'); onDone(); }
       }
     } catch (x) { setErr('Keine Verbindung. Bitte Internet prüfen.'); }
+    if (needCap) setCrk(k => k + 1);
     setBusy(false); };
   const T = { login: ['Anmelden', 'Einmal anmelden – das Gerät bleibt danach angemeldet.'],
     signup: ['Zugang anlegen', invited ? 'Du wurdest in eine Familie eingeladen. Leg dir einen Zugang an, dann bist du gleich dabei.' : 'Leg einen Zugang an. Danach gründest du deine Familie oder trittst mit einem Code bei.'],
@@ -2852,6 +2874,7 @@ function Login({ onDone, onDemo, recovery }){
       ${mode !== 'newpw' ? html`<label class="field">E-Mail<input id="login-mail" type="email" autocomplete="username" value=${email} onInput=${e => setEmail(e.target.value)} /></label>` : null}
       ${mode !== 'reset' ? html`<label class="field">${mode === 'login' ? 'Passwort' : 'Passwort (mindestens 8 Zeichen)'}<input id="login-pw" type="password" autocomplete=${mode === 'login' ? 'current-password' : 'new-password'} value=${pw} onInput=${e => setPw(e.target.value)} /></label>` : null}
       ${mode === 'signup' || mode === 'newpw' ? html`<label class="field">Passwort wiederholen<input id="login-pw2" type="password" autocomplete="new-password" value=${pw2} onInput=${e => setPw2(e.target.value)} /></label>` : null}
+      ${needCap ? html`<${Captcha} onToken=${setCtok} rk=${crk + ':' + mode} />` : null}
       ${err ? html`<div class="hint warn" role="alert">${err}</div>` : null}
       ${info ? html`<div class="hint" role="status">${info}</div>` : null}
       <button class="btn" type="submit" disabled=${busy}>${busy ? 'Einen Moment …' : { login: 'Anmelden', signup: 'Zugang anlegen', reset: 'Link schicken', newpw: 'Passwort speichern' }[mode]}</button>
@@ -2937,7 +2960,7 @@ function UserActions({ u, reload }){
   const [conf, setConf] = useState(null); const [busy, setBusy] = useState(false);
   if (u.ich) return html`<div class="sub" style="font-size:13px">Das ist dein eigener Zugang.</div>`;
   const run = async (fn, ok) => { setBusy(true); try { await fn(); toast(ok); setConf(null); reload(); } catch (e) { toast(admErr(e)); } setBusy(false); };
-  const reset = () => run(async () => { const { error } = await sb.auth.resetPasswordForEmail(u.email, { redirectTo: location.origin + '/' }); if (error) throw error; }, 'Mail zum neuen Passwort an ' + u.email + ' geschickt');
+  const reset = () => run(async () => { const { error } = await sb.auth.resetPasswordForEmail(u.email, { redirectTo: location.origin + '/', captchaToken: CAPTCHA_KEY ? window.__admCap : undefined }); window.dispatchEvent(new CustomEvent('fb-cap-reset')); if (error) throw error; }, 'Mail zum neuen Passwort an ' + u.email + ' geschickt');
   if (conf) return html`<div class="hint warn" style="margin:0">${conf === 'del' ? html`<b>${u.email} endgültig löschen?</b> Der Zugang verschwindet. Die Daten der Familie bleiben erhalten.` : html`<b>${u.email} sperren?</b> Anmelden geht dann nicht mehr, angemeldete Geräte fliegen raus. Entsperren geht jederzeit.`}
     <div class="row" style="margin-top:8px"><button type="button" class="btn small" disabled=${busy} style="background:var(--danger);color:#fff" onClick=${() => conf === 'del' ? run(() => admRpc('admin_delete_user', { uid: u.id }), u.email + ' wurde gelöscht') : run(() => admRpc('admin_ban_user', { uid: u.id, sperren: true }), u.email + ' ist gesperrt')}>${conf === 'del' ? 'Endgültig löschen' : 'Sperren'}</button>
       <button type="button" class="btn small ghost" onClick=${() => setConf(null)}>Abbrechen</button></div></div>`;
@@ -2974,6 +2997,7 @@ function FamilyDetail({ f, users, seen, reload, onClose }){
 function AdminFamilies(){
   const [rows, setRows] = useState(null); const [users, setUsers] = useState([]); const [err, setErr] = useState(''); const [q, setQ] = useState('');
   const [tab, setTab] = useState('fam'); const [det, setDet] = useState(null); const [seen] = useState(admSeen);
+  const [crk, setCrk] = useState(0); useEffect(() => { const h = () => setCrk(k => k + 1); window.addEventListener('fb-cap-reset', h); return () => window.removeEventListener('fb-cap-reset', h); }, []);
   const load = () => { setErr(''); Promise.all([admRpc('admin_families'), admRpc('admin_users').catch(() => [])])
     .then(([f, u]) => { setRows(f || []); setUsers(u || []); lsSet('fb-adm-seen', String(Date.now())); lsSet('fb-adm-told', String(Date.now())); })
     .catch(e => setErr(/not_app_admin/.test((e && e.message) || '') ? 'Dieser Zugang hat keine Admin-Rechte.' : 'Die Liste konnte nicht geladen werden.')); };
@@ -3010,6 +3034,7 @@ function AdminFamilies(){
       ${!list.length ? html`<div class="empty">Keine Familie gefunden.</div>` : null}`
       : html`<div class="card"><div class="list">${ulist.map(u => html`<${UserLine} u=${u} seen=${seen} reload=${load} showFam />`)}</div>
         ${!ulist.length ? html`<div class="empty">Kein Zugang gefunden.</div>` : null}</div>`}` : err ? null : html`<div class="loading">Wird geladen …</div>`}
+    <${Captcha} onToken=${t => { window.__admCap = t; }} rk=${crk} />
     ${det && famOf(det) ? html`<${FamilyDetail} f=${famOf(det)} users=${users} seen=${seen} reload=${load} onClose=${() => setDet(null)} />` : null}
   </main>`;
 }
@@ -3029,6 +3054,27 @@ function FamilyNameCard(){
 }
 
 /* ---------- Familie einladen (im Bereich „Familie verwalten“) ---------- */
+/* ---------- Eigenen Zugang löschen ---------- */
+function DeleteMe(){
+  const [open, setOpen] = useState(false); const [typed, setTyped] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [me, setMe] = useState('');
+  useEffect(() => { if (sb && !DEMO) sb.auth.getUser().then(r => setMe((r.data && r.data.user && r.data.user.email) || '')).catch(() => {}); }, []);
+  if (DEMO || !sb) return null;
+  const go = async () => { setBusy(true); setErr('');
+    try { const r = await sb.rpc('delete_my_account'); if (r.error) throw r.error;
+      try { await sb.auth.signOut({ scope: 'local' }); } catch (e) {} try { localStorage.clear(); } catch (e) {}
+      toast('Dein Zugang wurde gelöscht'); setTimeout(() => location.replace(location.origin + '/'), 1500); }
+    catch (x) { const m = (x && x.message) || ''; setErr(/app_admin/.test(m) ? 'Der App-Admin-Zugang kann sich nicht selbst löschen.' : 'Das Löschen hat nicht geklappt: ' + m); }
+    setBusy(false); };
+  if (!open) return html`<button type="button" class="btn ghost small" style="align-self:flex-start;color:var(--danger)" onClick=${() => setOpen(true)}><${Icon} n="bin" size=${16} />Meinen Zugang löschen</button>`;
+  return html`<div class="hint warn"><b>Deinen Zugang${me ? ' (' + me + ')' : ''} endgültig löschen?</b><br />
+    Danach kannst du dich mit dieser E-Mail nicht mehr anmelden. Die Familie mit Kalender, Listen und Plänen bleibt für die anderen erhalten.
+    <b>Bist du das letzte Mitglied, wird die Familie mit allen Daten ebenfalls gelöscht.</b> Das lässt sich nicht rückgängig machen.<br />Zum Bestätigen <b>LÖSCHEN</b> eintippen:
+    <input class="input" style="margin-top:8px" value=${typed} onInput=${e => setTyped(e.target.value)} aria-label="LÖSCHEN eintippen zur Bestätigung" autocomplete="off" />
+    ${err ? html`<div style="margin-top:6px;font-weight:800">${err}</div>` : null}
+    <div class="row" style="margin-top:8px"><button type="button" class="btn small" style="background:var(--danger);color:#fff" disabled=${busy || typed.trim().toUpperCase() !== 'LÖSCHEN'} onClick=${go}>Zugang endgültig löschen</button>
+      <button type="button" class="btn small ghost" onClick=${() => { setOpen(false); setTyped(''); setErr(''); }}>Abbrechen</button></div></div>`;
+}
+
 function InviteCard(){
   const [, force] = useState(0); const [busy, setBusy] = useState(false); const [conf, setConf] = useState(false); const [appAdmin, setAppAdmin] = useState(false);
   useEffect(() => { if (!sb || DEMO) return; sb.rpc('is_app_admin').then(r => setAppAdmin(!!(r && r.data))).catch(() => {}); }, []);
@@ -3044,7 +3090,8 @@ function InviteCard(){
         <div class="row" style="margin-top:8px"><button type="button" class="btn small" disabled=${busy} onClick=${renew}>Neuen Code erstellen</button><button type="button" class="btn small ghost" onClick=${() => setConf(false)}>Abbrechen</button></div></div>`
       : html`<button type="button" class="btn ghost small" style="align-self:flex-start" onClick=${() => setConf(true)}>Neuen Code erstellen</button>`) : null}
     ${appAdmin ? html`<a class="btn ghost small" style="align-self:flex-start" href=${SLUG_SITE ? '/admin' : '#admin'} onClick=${() => { if (!SLUG_SITE) setTimeout(() => location.reload(), 50); }}>Admin: Familien und Zugänge${window.__admNew ? ' (' + window.__admNew + ' neu)' : ''}</a>` : null}
-    <button type="button" class="btn ghost small" style="align-self:flex-start;color:var(--danger)" onClick=${signOut}>Auf diesem Gerät abmelden</button></div>`;
+    <button type="button" class="btn ghost small" style="align-self:flex-start;color:var(--danger)" onClick=${signOut}>Auf diesem Gerät abmelden</button>
+    <${DeleteMe} /></div>`;
 }
 
 /* ---------- App ---------- */
@@ -3388,7 +3435,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '68';
+const APP_VER = '69';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
