@@ -15,7 +15,7 @@ window.__fbRecovery = /type=recovery/.test(location.hash + location.search);
 </script>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon.svg">
-<title>Familienboard</title>
+<title>Familienplaner</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap">
 <style>
 /* Layout: Wandtablet im Querformat – Menüleiste links, Inhalt rechts; am Handy Menüleiste unten */
@@ -497,7 +497,7 @@ button.lbs[aria-expanded="true"] .chev{transform:rotate(-90deg)}
 
 </head>
 <body>
-<div id="root"><div class="loading" style="padding:24px">Familienboard wird geladen …</div></div>
+<div id="root"><div class="loading" style="padding:24px">Familienplaner wird geladen …</div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/preact/standalone.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -1057,7 +1057,7 @@ const famErr = e => { const m = (e && (e.message || e.details)) || '';
   if (/name_missing/.test(m)) return 'Bitte einen Familiennamen eingeben.';
   if (/not_admin/.test(m)) return 'Nur wer die Familie gegründet hat, kann den Code ändern.';
   return 'Das hat nicht geklappt. Bitte Internet prüfen und nochmal versuchen.'; };
-function setFamily(f){ FAMILY = f || null; FID = f ? f.id : null; membersSig = ''; try { if (f && f.name) document.title = f.name + ' · Familienboard'; } catch (e) {} window.dispatchEvent(new CustomEvent('fb-family')); }
+function setFamily(f){ FAMILY = f || null; FID = f ? f.id : null; membersSig = ''; try { if (f && f.name) document.title = f.name + ' · Familienplaner'; } catch (e) {} window.dispatchEvent(new CustomEvent('fb-family')); }
 async function loadFamily(){ const { data, error } = await sb.rpc('my_family'); if (error) throw error; setFamily(data || null); return FAMILY; }
 async function createFamily(name, list){
   const { data, error } = await sb.rpc('create_family', { p_name: name }); if (error) throw error; setFamily(data);
@@ -2732,7 +2732,7 @@ function Check(){
   const rows = [
     ['Bildschirm', window.innerWidth + ' × ' + window.innerHeight + ' (' + (window.innerHeight > window.innerWidth ? 'Hochformat' : 'Querformat') + ')'],
     ['Browser', navigator.userAgent],
-    ['Familienboard-App (APK)', window.FamilienboardApp ? 'ja – Sprache über Android' : 'nein'],
+    ['Familienplaner-App (APK)', window.FamilienboardApp ? 'ja – Sprache über Android' : 'nein'],
     ['Spracherkennung im Browser', SR ? 'vorhanden' : 'fehlt'],
     ['Mikrofon-Zugriff', navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? 'vorhanden' : 'fehlt'],
     ['Live-Verbindung', 'WebSocket' in window ? 'ja' : 'nein'],
@@ -2802,8 +2802,8 @@ function Login({ onDone, onDemo, recovery }){
   return html`<div style="min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))">
     <form class="card" style="width:100%;max-width:420px;gap:14px" onSubmit=${go}>
       <div class="logo" style="margin:0"><${Icon} n="home" size=${28} sw=${2.2} /></div>
-      <h1 style="font-size:26px">${fam ? fam.name : 'Familienboard'}</h1>
-      ${fam ? html`<div class="sub" style="font-size:14px;margin-top:-8px">Familienboard</div>` : null}
+      <h1 style="font-size:26px">${fam ? fam.name : 'Familienplaner'}</h1>
+      ${fam ? html`<div class="sub" style="font-size:14px;margin-top:-8px">Familienplaner</div>` : null}
       ${mode === 'login' || mode === 'signup' ? html`<div class="seg" role="group" aria-label="Anmelden oder registrieren" style="align-self:stretch">
         <button type="button" style="flex:1;justify-content:center" aria-pressed=${mode === 'login'} onClick=${() => sw('login')}>Anmelden</button>
         <button type="button" style="flex:1;justify-content:center" aria-pressed=${mode === 'signup'} onClick=${() => sw('signup')}>Registrieren</button></div>`
@@ -2857,7 +2857,7 @@ function FamilyStart({ onDone }){
   if (mode === 'pick') return wrap(html`
     <div class="logo" style="margin:0"><${Icon} n="home" size=${28} sw=${2.2} /></div>
     <h1 style="font-size:26px">Willkommen!</h1>
-    <div class="sub" style="font-size:15px">Gehört deine Familie schon zum Familienboard? Dann frag nach dem Einladungscode. Sonst gründest du eure Familie hier neu.</div>
+    <div class="sub" style="font-size:15px">Gehört deine Familie schon zum Familienplaner? Dann frag nach dem Einladungscode. Sonst gründest du eure Familie hier neu.</div>
     <button type="button" class="btn" onClick=${() => setMode('new')}><${Icon} n="plus" size=${20} />Neue Familie gründen</button>
     <button type="button" class="btn ghost" onClick=${() => setMode('join')}><${Icon} n="lock" size=${18} />Mit Einladungscode beitreten</button>
     <button type="button" class="btn ghost" style="border:0;min-height:40px" onClick=${signOut}>Abmelden</button>`);
@@ -3259,7 +3259,7 @@ function App(){
   if (auth === 'unconfigured') return html`<div class="main"><div class="card"><h1 style="font-size:24px">Fast geschafft</h1>
     <div>In der Datei <b>index.html</b> fehlen noch die Supabase-Adresse und der Schlüssel (Anleitung Schritt 3).</div></div>
     ${view === 'check' ? html`<${Check} />` : html`<a class="btn ghost" href="#check">Gerätecheck öffnen</a>`}</div>`;
-  if (auth === 'wait' || auth === 'fam') return html`<div class="loading" style="padding:24px">Familienboard wird geladen …</div>`;
+  if (auth === 'wait' || auth === 'fam') return html`<div class="loading" style="padding:24px">Familienplaner wird geladen …</div>`;
   if (auth === 'out') return html`<${Login} recovery=${recovery} onDone=${() => { window.__fbRecovery = false; setRecovery(false); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} setAuth('fam'); }} onDemo=${() => { startDemo(); setReady(true); setAuth('demo'); }} />`;
   if (auth === 'nofam') return loadErr ? html`<div class="main"><div class="hint warn" role="alert">${loadErr}</div><button type="button" class="btn" onClick=${() => location.reload()}>Neu laden</button></div>` : html`<${FamilyStart} onDone=${() => { showFamilyPath(); setAuth('in'); }} />`;
   if (auth === 'in' && isAdminView()) return html`<${AdminFamilies} />`;
@@ -3285,7 +3285,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '59';
+const APP_VER = '60';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
