@@ -79,6 +79,11 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .celebrew{font-size:19px;font-weight:900;background:var(--food-bg);border:2px solid var(--star);border-radius:16px;padding:10px 16px}
 @keyframes celebpop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){.celebbox{animation:none}}
+.rewrow{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
+.rewnum{display:flex;align-items:center;gap:4px;flex:none}.rewnum input{width:84px;height:48px;font-size:18px;font-weight:800;text-align:right;padding:0 10px;border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--fg);box-sizing:border-box}.rewnum span{color:var(--star-line);font-size:18px}
+.rewtx{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}.rewtx input{height:48px;font-size:16px;padding:0 12px;border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--fg);width:100%;box-sizing:border-box}.rewtx .sub{font-size:13px}.rewlv{font-size:13px;font-weight:800;color:var(--muted)}
+.diffbox{display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:16px;background:var(--surface-2)}.diffbox input[type=range]{width:100%;accent-color:var(--star-line);height:36px}
+.diffval{font-weight:900;color:var(--star-line)}.diffticks{display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:var(--muted)}
 .nav .sync{margin-top:auto;font-size:11px;font-weight:700;color:var(--muted);text-align:center;padding:0 8px;line-height:1.3}
 .main{flex:1;min-width:0;overflow:auto;padding-block:22px 28px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
 .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
@@ -576,35 +581,38 @@ const copyR = r => { const o = { tag: Object.assign({}, (r || {}).tag || {}) }; 
 
 /* ---------- Sterne, Level & Belohnungen ---------- */
 const LEVELS = [
-  { at:0, name:'Starter' },
-  { at:10, name:'Helfer', reward:'Lieblingsnachtisch aussuchen' },
-  { at:25, name:'Profi', reward:'30 Minuten länger aufbleiben' },
-  { at:50, name:'Held', reward:'Lieblingsessen für den Essensplan bestimmen' },
-  { at:80, name:'Superheld', reward:'Filmabend – du suchst den Film aus' },
-  { at:120, name:'Champion', reward:'Ausflug allein mit Mama oder Papa' },
-  { at:175, name:'Legende', reward:'Kleines Geschenk (Buch, Spiel …)' },
-  { at:250, name:'Meister', reward:'Wunsch-Tag: du planst den Tag' },
-  { at:350, name:'Großmeister', reward:'Großer Wunsch nach Absprache' }
+  { key:0, at:0, name:'Starter' },
+  { key:10, at:10, name:'Helfer', reward:'Lieblingsnachtisch aussuchen' },
+  { key:25, at:25, name:'Profi', reward:'30 Minuten länger aufbleiben' },
+  { key:50, at:50, name:'Held', reward:'Lieblingsessen für den Essensplan bestimmen' },
+  { key:80, at:80, name:'Superheld', reward:'Filmabend – du suchst den Film aus' },
+  { key:120, at:120, name:'Champion', reward:'Ausflug allein mit Mama oder Papa' },
+  { key:175, at:175, name:'Legende', reward:'Kleines Geschenk (Buch, Spiel …)' },
+  { key:250, at:250, name:'Meister', reward:'Wunsch-Tag: du planst den Tag' },
+  { key:350, at:350, name:'Großmeister', reward:'Großer Wunsch nach Absprache' }
 ];
 const FAMILY_GOALS = [
-  { at:150, reward:'Pizza- und Spieleabend' },
-  { at:400, reward:'Familienausflug, z. B. Schwimmbad' },
-  { at:800, reward:'Großer Ausflug, z. B. Freizeitpark' }
+  { key:150, at:150, reward:'Pizza- und Spieleabend' },
+  { key:400, at:400, reward:'Familienausflug, z. B. Schwimmbad' },
+  { key:800, at:800, reward:'Großer Ausflug, z. B. Freizeitpark' }
 ];
 /* Erreicht = höchstens 0,05 Sterne darunter (geteilte Aufgaben ergeben z. B. 9,99 statt 10) */
 const reach = (n, at) => (n || 0) + 0.05 >= at;
+/* Eigene Sternzahlen aus „Ziele & Belohnungen“ übernehmen (Schlüssel bleibt der Standardwert, damit Einlösungen erhalten bleiben) */
+function applyRewardCfg(c){ c = c || {}; const la = c.levelAt || {}, fa = c.familyAt || {};
+  LEVELS.forEach(l => { l.at = l.key ? (+la[l.key] > 0 ? +la[l.key] : l.key) : 0; }); FAMILY_GOALS.forEach(g => { g.at = +fa[g.key] > 0 ? +fa[g.key] : g.key; }); }
 const levelIdx = n => { let i = 0; LEVELS.forEach((l, k) => { if (reach(n, l.at)) i = k; }); return i; };
 const weekDoc = d => 'pointsweek/' + iso(monday(d || new Date()));
 let mem_ = null;
 /* Sterne vergeben: Gesamtstand + Wochenstand, mit Glückwunsch beim Levelaufstieg */
 function givePoints(points, deltas, date){
   const p = Object.assign({}, points || {}); const wk = weekDoc(date ? fromIso(date) : new Date()); const w = Object.assign({}, (mem_ && mem_.docs[wk]) || {});
-  const tb = famTotal(p); const ev = [];
+  applyRewardCfg(mem_ && mem_.docs['config/rewards']); const tb = famTotal(p); const ev = [];
   Object.keys(deltas).forEach(id => { const d = deltas[id]; if (!d) return; const before = p[id] || 0;
     p[id] = r2(Math.max(0, before + d)); w[id] = r2(Math.max(0, (w[id] || 0) + d));
     const a = levelIdx(before), b = levelIdx(p[id]);
     if (b > a && byId[id]) ev.push({ type: 'level', who: id, level: b }); });
-  const ta = famTotal(p); FAMILY_GOALS.forEach(g => { if (!reach(tb, g.at) && reach(ta, g.at)) ev.push({ type: 'family', at: g.at }); });
+  const ta = famTotal(p); FAMILY_GOALS.forEach(g => { if (!reach(tb, g.at) && reach(ta, g.at)) ev.push({ type: 'family', at: g.at, key: g.key }); });
   S.set('points/all', p); S.set(wk, w); if (ev.length) setTimeout(() => celebrate(ev), 500);
 }
 
@@ -612,8 +620,8 @@ function givePoints(points, deltas, date){
 const rewKey = (w, at) => w + ':' + at;
 const famTotal = P => MEMBERS.reduce((s, m) => s + ((P || {})[m.id] || 0), 0);
 function reachedRewards(P){ const out = [];
-  MEMBERS.forEach(m => LEVELS.slice(1).forEach(l => { if (reach(P[m.id], l.at)) out.push({ who: m.id, at: l.at }); }));
-  const t = famTotal(P); FAMILY_GOALS.forEach(g => { if (reach(t, g.at)) out.push({ who: 'familie', at: g.at }); }); return out; }
+  MEMBERS.forEach(m => LEVELS.slice(1).forEach(l => { if (reach(P[m.id], l.at)) out.push({ who: m.id, at: l.key }); }));
+  const t = famTotal(P); FAMILY_GOALS.forEach(g => { if (reach(t, g.at)) out.push({ who: 'familie', at: g.key }); }); return out; }
 /* Erreicht, noch nicht eingelöst und neu (alles, was beim Einführen schon erreicht war, zählt nicht) */
 function useNewRewards(){
   const P = useDoc('points/all'), C = useDoc('rewards/claims'), B = useDoc('rewards/baseline');
@@ -672,12 +680,12 @@ function Celebrate(){
           <div class="celebic"><${Icon} n="trophy" size=${44} /></div>
           <h2>Familienziel geschafft!</h2>
           <div class="sub" style="font-size:17px">Alle zusammen haben ${x.at} Sterne gesammelt.</div>
-          <div class="celebrew">${((R.family || {})[x.at]) || (FAMILY_GOALS.find(g => g.at === x.at) || {}).reward || ''}</div></div>`
+          <div class="celebrew">${((R.family || {})[x.key || x.at]) || (FAMILY_GOALS.find(g => g.key === (x.key || x.at)) || {}).reward || ''}</div></div>`
         : html`<div class="celebitem">
           <${Avatar} id=${x.who} size=${84} ring=${true} />
           <h2>${byId[x.who].name} hat Level ${x.level + 1} erreicht!</h2>
           <div class="sub" style="font-size:17px">Jetzt ${LEVELS[x.level].name} · ${LEVELS[x.level].at} Sterne</div>
-          ${(((R.levels || {})[LEVELS[x.level].at]) || LEVELS[x.level].reward) ? html`<div class="celebrew">Belohnung: ${((R.levels || {})[LEVELS[x.level].at]) || LEVELS[x.level].reward}</div>` : null}</div>`)}
+          ${(((R.levels || {})[LEVELS[x.level].key]) || LEVELS[x.level].reward) ? html`<div class="celebrew">Belohnung: ${((R.levels || {})[LEVELS[x.level].key]) || LEVELS[x.level].reward}</div>` : null}</div>`)}
       <div class="row" style="justify-content:center;margin-top:6px">
         <button type="button" class="btn" style="min-width:140px" onClick=${close}>Juhu!</button>
         <button type="button" class="btn ghost" onClick=${() => { close(); location.hash = 'sterne'; }}>Zu den Sternen</button></div>
@@ -3293,8 +3301,9 @@ function Sterne({ now }){
   const [open, setOpen] = useState(null);
   useEffect(() => { dbReady.then(() => { try { quietly(backfillLog); } catch (e) { console.error(e); } }); }, []);
   const P = points || {}, W = week || {}, C = claims || {}, R = custom || {};
-  const rw = l => ((R.levels || {})[l.at]) || l.reward;
-  const fr = g => ((R.family || {})[g.at]) || g.reward;
+  applyRewardCfg(custom);
+  const rw = l => ((R.levels || {})[l.key]) || l.reward;
+  const fr = g => ((R.family || {})[g.key]) || g.reward;
   const val = id => mode === 'woche' ? (W[id] || 0) : (P[id] || 0);
   const ranked = MEMBERS.slice().sort((a, b) => val(b.id) - val(a.id) || (P[b.id] || 0) - (P[a.id] || 0));
   let rk = 0, lastV = null; const ranks = ranked.map((m, i) => { const v = val(m.id); if (v !== lastV) { rk = i + 1; lastV = v; } return rk; });
@@ -3318,7 +3327,7 @@ function Sterne({ now }){
           <button type="button" aria-pressed=${mode === 'woche'} onClick=${() => setMode('woche')}>Diese Woche</button>
           <button type="button" aria-pressed=${mode === 'gesamt'} onClick=${() => setMode('gesamt')}>Insgesamt</button>
         </div>
-        <button type="button" class="btn small ghost" onClick=${async () => { if (await parentOk('Belohnungen ändern')) setEdit(true); }}><${Icon} n="lock" size=${16} />Belohnungen</button>
+        <button type="button" class="btn small ghost" onClick=${async () => { if (await parentOk('Ziele & Belohnungen ändern')) setEdit(true); }}><${Icon} n="lock" size=${16} />Ziele & Belohnungen</button>
       </div>
     </div>
     <div class="split">
@@ -3343,19 +3352,19 @@ function Sterne({ now }){
           <h2 style="font-size:20px;display:flex;align-items:center;gap:8px"><${Icon} n="home" size=${22} />Familienziel${NR.some(r => r.who === 'familie') ? html`<span class="newdot" title="Neue Belohnung"></span>` : null}</h2>
           <div class="sub" style="font-size:14px">Alle sammeln zusammen: <b style="color:var(--fg)">${fmtS(total)} Sterne</b>${nextGoal ? ' · noch ' + fmtS(nextGoal.at - total) + ' bis „' + fr(nextGoal) + '“' : ' · alle Ziele geschafft!'}</div>
           ${nextGoal ? html`<div class="progress" style="height:14px"><div style=${'width:' + Math.round((total - prevGoalAt) / (nextGoal.at - prevGoalAt) * 100) + '%;background:var(--star)'}></div></div>` : null}
-          <div class="ladder">${FAMILY_GOALS.map(g => { const got = reach(total, g.at); const c = (C.familie || {})[g.at];
+          <div class="ladder">${FAMILY_GOALS.map(g => { const got = reach(total, g.at); const c = (C.familie || {})[g.key];
             return html`<div class=${'step' + (got ? ' got' : ' locked')}><span class="sn">${g.at}<small>Sterne</small></span>
               <span class="sx"><b>${fr(g)}</b><span>${got ? (c ? 'Eingelöst am ' + fromIso(c).toLocaleDateString('de-DE') : 'Geschafft! Jetzt einlösen.') : 'Noch ' + fmtS(g.at - total) + ' Sterne'}</span></span>
-              ${got ? (c ? html`<button type="button" class="claimed" onClick=${() => unclaim('familie', g.at)} aria-label="Einlösen rückgängig">Eingelöst</button>` : html`<button type="button" class="btn small" onClick=${() => claim('familie', g.at)}>${isNew('familie', g.at) ? html`<span class="newdot"></span>` : null}Einlösen</button>`) : null}</div>`; })}</div>
+              ${got ? (c ? html`<button type="button" class="claimed" onClick=${() => unclaim('familie', g.key)} aria-label="Einlösen rückgängig">Eingelöst</button>` : html`<button type="button" class="btn small" onClick=${() => claim('familie', g.key)}>${isNew('familie', g.key) ? html`<span class="newdot"></span>` : null}Einlösen</button>`) : null}</div>`; })}</div>
         </div>
       </div>
       <aside>
         <div class="card">
           <div class="row"><${Avatar} id=${sel} size=${44} ring=${true} /><div><h2 style="font-size:20px">${byId[sel].name}</h2><div class="sub" style="font-size:14px">${fmtS(sp)} Sterne · Level ${si + 1} ${LEVELS[si].name}</div></div></div>
-          <div class="ladder">${LEVELS.slice(1).map((l, j) => { const got = reach(sp, l.at); const c = (C[sel] || {})[l.at]; const isNext = !got && levelIdx(sp) === j;
+          <div class="ladder">${LEVELS.slice(1).map((l, j) => { const got = reach(sp, l.at); const c = (C[sel] || {})[l.key]; const isNext = !got && levelIdx(sp) === j;
             return html`<div class=${'step' + (got ? ' got' : isNext ? '' : ' locked')}><span class="sn">${j + 2}<small>${l.at} ★</small></span>
               <span class="sx"><b>${l.name}: ${rw(l)}</b><span>${got ? (c ? 'Eingelöst am ' + fromIso(c).toLocaleDateString('de-DE') : 'Erreicht!') : 'Noch ' + fmtS(l.at - sp) + ' Sterne'}</span></span>
-              ${got ? (c ? html`<button type="button" class="claimed" onClick=${() => unclaim(sel, l.at)} aria-label="Einlösen rückgängig">Eingelöst</button>` : html`<button type="button" class="btn small" onClick=${() => claim(sel, l.at)}>${isNew(sel, l.at) ? html`<span class="newdot"></span>` : null}Einlösen</button>`) : null}</div>`; })}</div>
+              ${got ? (c ? html`<button type="button" class="claimed" onClick=${() => unclaim(sel, l.key)} aria-label="Einlösen rückgängig">Eingelöst</button>` : html`<button type="button" class="btn small" onClick=${() => claim(sel, l.key)}>${isNew(sel, l.key) ? html`<span class="newdot"></span>` : null}Einlösen</button>`) : null}</div>`; })}</div>
           <div class="sub" style="font-size:13px">Belohnungen lösen Mama oder Papa zusammen mit dem Kind ein. Gesammelte Sterne bleiben erhalten.</div>
         </div>
       </aside>
@@ -3365,7 +3374,7 @@ function Sterne({ now }){
       <button type="button" class="btn" onClick=${() => openAdmin(() => setAdm(true))}><${Icon} n="lock" size=${18} />Familie verwalten</button></div></div>
     ${adm ? html`<${Admin} onClose=${() => setAdm(false)} />` : null}
     ${DEMO ? null : html`<${BackupCard} />`}
-    ${edit ? html`<${RewardEdit} R=${R} rw=${rw} fr=${fr} onClose=${() => setEdit(false)} />` : null}`;
+    ${edit ? html`<${RewardEdit} R=${R} rw=${rw} fr=${fr} P=${P} onClose=${() => setEdit(false)} />` : null}`;
 }
 /* Häkchen von früher, deren Aufgabe es nicht mehr gibt (gelöscht oder verschoben) */
 const logUnknown = e => e.kind === 'routine' && (!e.what || e.what === 'Routine');
@@ -3426,20 +3435,68 @@ function BackupCard(){
       : html`<div class="sub" style="font-size:14px">Die erste Sicherung entsteht in wenigen Sekunden.</div>`}
   </div>`;
 }
-function RewardEdit({ R, rw, fr, onClose }){
-  const [lv, setLv] = useState(() => { const o = {}; LEVELS.slice(1).forEach(l => o[l.at] = rw(l)); return o; });
-  const [fa, setFa] = useState(() => { const o = {}; FAMILY_GOALS.forEach(g => o[g.at] = fr(g)); return o; });
-  const save = () => { S.set('config/rewards', { levels: lv, family: fa }); toast('Belohnungen gespeichert'); onClose(); };
-  return html`<${Sheet} title="Belohnungen anpassen" onClose=${onClose} wide>
-    <div class="sub" style="font-size:14px">Trage ein, was es bei jedem Level gibt. Gilt für alle in der Familie.</div>
-    ${LEVELS.slice(1).map((l, j) => html`<label class="field">Level ${j + 2} · ${l.name} (ab ${l.at} Sternen)<input value=${lv[l.at]} onInput=${e => setLv(Object.assign({}, lv, { [l.at]: e.target.value }))} /></label>`)}
-    <h3 style="font-size:16px">Familienziele</h3>
-    ${FAMILY_GOALS.map(g => html`<label class="field">Ab ${g.at} Sternen zusammen<input value=${fa[g.at]} onInput=${e => setFa(Object.assign({}, fa, { [g.at]: e.target.value }))} /></label>`)}
-    <div class="row"><button type="button" class="btn" onClick=${save}>Speichern</button><button type="button" class="btn ghost" onClick=${onClose}>Abbrechen</button></div>
+/* ---------- Ziele & Belohnungen einstellen (Sternzahlen, Schwierigkeit, Empfehlung) ---------- */
+const niceAt = n => n < 50 ? Math.max(1, Math.round(n)) : n < 200 ? Math.round(n / 5) * 5 : Math.round(n / 10) * 10;
+const facFromSlider = v => 0.5 * Math.pow(8, v / 100);          /* 0 … 100  →  ×0,5 … ×4 */
+const sliderFromFac = f => Math.round(Math.log(Math.max(0.5, Math.min(4, f)) / 0.5) / Math.log(8) * 100);
+const fmtFac = f => '×' + (Math.round(f * 10) / 10).toString().replace('.', ',');
+const hardName = f => f < 0.8 ? 'Leicht' : f < 1.3 ? 'Normal' : f < 2.2 ? 'Schwer' : f < 3.2 ? 'Sehr schwer' : 'Extrem schwer';
+const fmtWeeks = w => !isFinite(w) ? '–' : w < 1 ? 'unter 1 Woche' : w < 1.5 ? 'ca. 1 Woche' : w < 9 ? 'ca. ' + Math.round(w) + ' Wochen' : w < 52 ? 'ca. ' + Math.round(w / 4.35) + ' Monate' : 'über 1 Jahr';
+/* Wie viele Sterne sammelt die Familie pro Woche? (abgeschlossene Wochen, sonst laufende Woche hochgerechnet) */
+function starRate(){ const docs = (mem_ && mem_.docs) || {}; const cur = weekDoc(new Date());
+  const sum = d => MEMBERS.reduce((s, m) => s + ((d || {})[m.id] || 0), 0);
+  const weeks = Object.keys(docs).filter(k => k.indexOf('pointsweek/') === 0 && k !== cur).sort().slice(-6).map(k => sum(docs[k])).filter(v => v > 0);
+  if (weeks.length) return { fam: weeks.reduce((a, b) => a + b, 0) / weeks.length, n: weeks.length };
+  const days = ((new Date().getDay() + 6) % 7) + 1; const c = sum(docs[cur]);
+  return days >= 2 && c > 0 ? { fam: c / days * 7, n: 0 } : { fam: 0, n: 0 }; }
+function DiffSlider({ f, set, rec, label }){
+  return html`<div class="diffbox">
+    <div class="row" style="justify-content:space-between;gap:8px"><b>${label}</b><span class="diffval">${hardName(f)} · ${fmtFac(f)}</span></div>
+    <input type="range" min="0" max="100" step="1" value=${sliderFromFac(f)} aria-label=${label} aria-valuetext=${hardName(f) + ', ' + fmtFac(f)} onInput=${e => set(facFromSlider(+e.target.value))} />
+    <div class="diffticks"><span>Leicht</span><span>Normal</span><span>Schwer</span><span>Sehr schwer</span></div>
+    ${rec ? html`<button type="button" class="btn small ghost" style="align-self:flex-start" onClick=${() => set(rec)}><${Icon} n="star" size=${16} />Empfehlung übernehmen: ${hardName(rec)} (${fmtFac(rec)})</button>` : null}
+  </div>`;
+}
+function RewardEdit({ R, rw, fr, onClose, P }){
+  const rate = starRate(); const per = MEMBERS.length ? rate.fam / MEMBERS.length : 0; const total = famTotal(P || {});
+  const [lv, setLv] = useState(() => { const o = {}; LEVELS.slice(1).forEach(l => o[l.key] = rw(l)); return o; });
+  const [fa, setFa] = useState(() => { const o = {}; FAMILY_GOALS.forEach(g => o[g.key] = fr(g)); return o; });
+  const [la, setLa] = useState(() => { const o = {}; LEVELS.slice(1).forEach(l => o[l.key] = l.at); return o; });
+  const [ga, setGa] = useState(() => { const o = {}; FAMILY_GOALS.forEach(g => o[g.key] = g.at); return o; });
+  const [lf, setLf] = useState(R.lvF || 1); const [gf, setGf] = useState(R.faF || 1);
+  const recL = per > 0 ? Math.max(0.5, Math.min(4, per * 1.5 / 10)) : null;     /* Level 2 nach ca. 1½ Wochen */
+  const recG = rate.fam > 0 ? Math.max(0.5, Math.min(4, rate.fam * 4 / 150)) : null; /* erstes Familienziel nach ca. 4 Wochen */
+  const setL = f => { setLf(f); const o = {}; LEVELS.slice(1).forEach(l => o[l.key] = niceAt(l.key * f)); setLa(o); };
+  const setG = f => { setGf(f); const o = {}; FAMILY_GOALS.forEach(g => o[g.key] = niceAt(g.key * f)); setGa(o); };
+  const inc = (list, a) => list.every((x, i) => i === 0 || (+a[x.key] || 0) > (+a[list[i - 1].key] || 0)) && list.every(x => (+a[x.key] || 0) > 0);
+  const save = () => { const L = LEVELS.slice(1);
+    if (!inc(L, la) || !inc(FAMILY_GOALS, ga)) { toast('Die Sternzahlen müssen von oben nach unten größer werden'); return; }
+    const num = a => { const o = {}; Object.keys(a).forEach(k => o[k] = Math.round(+a[k])); return o; };
+    S.set('config/rewards', { levels: lv, family: fa, levelAt: num(la), familyAt: num(ga), lvF: lf, faF: gf }); toast('Ziele & Belohnungen gespeichert'); onClose(); };
+  return html`<${Sheet} title="Ziele & Belohnungen" onClose=${onClose} wide>
+    <div class="hint" style="margin:0">${rate.fam > 0
+      ? html`Ihr sammelt zusammen etwa <b>${Math.round(rate.fam)} Sterne pro Woche</b> (≈ ${Math.round(per)} pro Person${rate.n ? ', Schnitt der letzten ' + rate.n + (rate.n === 1 ? ' Woche' : ' Wochen') : ', hochgerechnet'}). Die Zeiten unten sind Schätzungen danach.`
+      : 'Noch zu wenig Daten für eine Schätzung – nach ein paar Tagen mit Sternen erscheint hier eine Empfehlung.'}</div>
+    <h3 style="font-size:18px;margin-top:4px">Familienziele</h3>
+    <div class="sub" style="font-size:14px">Alle sammeln zusammen. Je mehr Personen, desto schneller geht es – darum lieber etwas schwerer einstellen. Empfehlung: das erste Ziel nach etwa 4 Wochen.</div>
+    <${DiffSlider} f=${gf} set=${setG} rec=${recG} label="Wie schwer sind die Familienziele?" />
+    ${FAMILY_GOALS.map((g, i) => { const at = +ga[g.key] || 0; const left = at - total;
+      return html`<div class="rewrow"><div class="rewnum"><input type="number" inputmode="numeric" min="1" value=${ga[g.key]} aria-label=${'Familienziel ' + (i + 1) + ': Sterne'} onInput=${e => setGa(Object.assign({}, ga, { [g.key]: e.target.value }))} /><span>★</span></div>
+        <div class="rewtx"><input value=${fa[g.key]} aria-label=${'Familienziel ' + (i + 1) + ': Belohnung'} onInput=${e => setFa(Object.assign({}, fa, { [g.key]: e.target.value }))} />
+          <span class="sub">${left <= 0.05 ? 'schon geschafft' : rate.fam > 0 ? 'noch ' + fmtS(left) + ' Sterne · ' + fmtWeeks(left / rate.fam) : 'noch ' + fmtS(left) + ' Sterne'}</span></div></div>`; })}
+    <h3 style="font-size:18px;margin-top:8px">Level (für jede Person)</h3>
+    <div class="sub" style="font-size:14px">Jede Person steigt mit ihren eigenen Sternen auf. Empfehlung: Level 2 nach etwa 1½ Wochen, danach werden die Abstände größer.</div>
+    <${DiffSlider} f=${lf} set=${setL} rec=${recL} label="Wie schwer sind die Level?" />
+    ${LEVELS.slice(1).map((l, j) => { const at = +la[l.key] || 0;
+      return html`<div class="rewrow"><div class="rewnum"><input type="number" inputmode="numeric" min="1" value=${la[l.key]} aria-label=${'Level ' + (j + 2) + ': Sterne'} onInput=${e => setLa(Object.assign({}, la, { [l.key]: e.target.value }))} /><span>★</span></div>
+        <div class="rewtx"><span class="rewlv">Level ${j + 2} · ${l.name}</span><input value=${lv[l.key]} aria-label=${'Level ' + (j + 2) + ': Belohnung'} onInput=${e => setLv(Object.assign({}, lv, { [l.key]: e.target.value }))} />
+          ${per > 0 ? html`<span class="sub">ab Start ${fmtWeeks(at / per)}</span>` : null}</div></div>`; })}
+    <div class="row" style="position:sticky;bottom:0;background:var(--surface);padding-top:8px"><button type="button" class="btn" onClick=${save}>Speichern</button>
+      <button type="button" class="btn ghost" onClick=${() => { setL(1); setG(1); }}>Standardwerte</button><button type="button" class="btn ghost" onClick=${onClose}>Abbrechen</button></div>
   <//>`;
 }
 const VIEWS = [
-  { id:'heute', label:'Heute', icon:'star' },
+  { id:'heute', label:'Heute', icon:'sun' },
   { id:'kalender', label:'Kalender', icon:'cal' },
   { id:'schule', label:'Schule', icon:'school' },
   { id:'einkauf', label:'Einkauf', icon:'cart' },
@@ -3600,6 +3657,7 @@ function App(){
   if (auth === 'out') return html`<${Login} recovery=${recovery} onDone=${() => { window.__fbRecovery = false; setRecovery(false); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} setAuth('fam'); }} onDemo=${() => { startDemo(); setReady(true); setAuth('demo'); }} />`;
   if (auth === 'nofam') return loadErr ? html`<div class="main"><div class="hint warn" role="alert">${loadErr}</div><button type="button" class="btn" onClick=${() => location.reload()}>Neu laden</button></div>` : html`<${FamilyStart} onDone=${() => { showFamilyPath(); setAuth('in'); }} />`;
   if (auth === 'in' && isAdminView()) return html`<${AdminFamilies} />${msg ? html`<div class="toast" role="status">${msg}</div>` : null}`;
+  applyRewardCfg(useDoc('config/rewards'));
   const newRw = useNewRewards();
   const V = view === 'check' ? Check : { heute: Heute, kalender: Kalender, schule: Schule, einkauf: Einkauf, essen: Essen, sterne: Sterne }[view];
   return html`<div class="app">
@@ -3624,7 +3682,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '74';
+const APP_VER = '75';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
