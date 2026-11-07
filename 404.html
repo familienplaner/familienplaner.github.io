@@ -402,6 +402,10 @@ button.lbs[aria-expanded="true"] .chev{transform:rotate(-90deg)}
 .mdish{flex:1;min-width:0;font-size:14px;font-weight:800;line-height:1.2;overflow-wrap:break-word;hyphens:auto}
 .mplus{font-size:13px;font-weight:800;color:var(--muted)}
 .undobar{position:fixed;right:max(20px,env(safe-area-inset-right,0px));bottom:24px;z-index:240;display:flex;align-items:center;gap:8px;min-height:56px;padding:0 20px;border:none;border-radius:999px;background:var(--fg);color:var(--bg);font-size:17px;font-weight:800;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.navundo{position:relative;width:84px;margin-top:10px;padding:8px 0;border:none;background:none;border-radius:16px;display:flex;flex-direction:column;align-items:center;gap:3px;font:inherit;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
+.navundo:not(:disabled):hover{background:var(--surface-2);color:var(--fg)}.navundo:disabled{opacity:.28;cursor:default}
+.navundo small{position:absolute;top:2px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center}
+@media (max-width:820px){.navundo{flex:0 0 40px;width:40px;margin:0;align-self:center}.navundo .lbl{display:none}}
 .undobar small{background:var(--accent);color:var(--accent-fg);border-radius:999px;padding:2px 8px;font-size:12px}
 @media (max-width:820px){.undobar{bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
 /* Fenster wachsen nur nach unten (oben bleibt alles an seinem Platz) */
@@ -576,7 +580,29 @@ const countdown = n => n === 0 ? 'heute' : n === 1 ? 'morgen' : 'in ' + n + ' Ta
 /* Tagesabschnitte: Morgen 4–12, Mittag 12–18, Abend 18–4 Uhr (nach Mitternacht zählt noch zum Vortag) */
 const SLOTS = [{ id:'morgen', name:'Morgen', adv:'morgens', icon:'sun', from:4 }, { id:'mittag', name:'Mittag', adv:'mittags', icon:'lunch', from:12 }, { id:'abend', name:'Abend', adv:'abends', icon:'moon', from:18 }];
 const slotIdx = id => SLOTS.findIndex(x => x.id === id);
-const slotOf = d => { const h = d.getHours(); const id = h < 4 ? 'abend' : h < 12 ? 'morgen' : h < 18 ? 'mittag' : 'abend'; return { id, day: iso(h < 4 ? addDays(d, -1) : d) }; };
+/* Tageszeiten: Beginn von Morgen, Mittag und Abend (in Stunden, z. B. 6.5 = 6:30) – einstellbar unter „Heute“ → Bearbeiten */
+const SLOT_DEF = { morgen: 4, mittag: 12, abend: 18 };
+function applySlotCfg(c){ c = c || {}; SLOTS.forEach(x => { const v = +c[x.id]; x.from = v > 0 && v < 24 ? v : SLOT_DEF[x.id]; }); }
+const fmtH = h => h % 1 ? Math.floor(h) + ':' + pad(Math.round(h % 1 * 60)) : String(h);
+const hToT = h => pad(Math.floor(h)) + ':' + pad(Math.round(h % 1 * 60));
+const tToH = t => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? +m[1] + +m[2] / 60 : NaN; };
+const slotOf = d => { const h = d.getHours() + d.getMinutes() / 60; const M = SLOTS[0].from, T = SLOTS[1].from, A = SLOTS[2].from;
+  const id = h < M ? 'abend' : h < T ? 'morgen' : h < A ? 'mittag' : 'abend'; return { id, day: iso(h < M ? addDays(d, -1) : d) }; };
+function SlotTimes(){
+  const [v, setV] = useState(() => { const o = {}; SLOTS.forEach(x => o[x.id] = hToT(x.from)); return o; });
+  const save = () => { const h = SLOTS.map(x => tToH(v[x.id]));
+    if (h.some(x => isNaN(x))) { toast('Bitte alle drei Uhrzeiten eintragen'); return; }
+    if (!(h[0] < h[1] && h[1] < h[2])) { toast('Die Zeiten müssen der Reihe nach später werden: Morgen, dann Mittag, dann Abend'); return; }
+    const o = {}; SLOTS.forEach((x, i) => o[x.id] = Math.round(h[i] * 60) / 60); S.set('config/slots', o); toast('Tageszeiten gespeichert'); };
+  const reset = () => { const o = {}; SLOTS.forEach(x => o[x.id] = hToT(SLOT_DEF[x.id])); setV(o); };
+  return html`<div class="card" style="gap:10px">
+    <h2 style="font-size:18px;display:flex;align-items:center;gap:8px"><${Icon} n="sun" size=${20} />Tageszeiten</h2>
+    <div class="sub" style="font-size:14px">Ab wann gilt Morgen, Mittag und Abend? Danach richtet sich, welche Aufgaben gerade dran sind und wann abgehakt werden kann. Nachts bis zum Morgen zählt noch der Abend.</div>
+    <div class="row" style="gap:12px">${SLOTS.map(x => html`<label class="field" style="flex:1 1 140px"><span style="display:flex;align-items:center;gap:6px"><${Icon} n=${x.icon} size=${18} />${x.name} ab</span>
+      <input type="time" step="300" value=${v[x.id]} onInput=${e => setV(Object.assign({}, v, { [x.id]: e.target.value }))} /></label>`)}</div>
+    <div class="row"><button type="button" class="btn small" onClick=${save}>Zeiten speichern</button><button type="button" class="btn small ghost" onClick=${reset}>Standard (4, 12, 18 Uhr)</button></div>
+  </div>`;
+}
 const copyR = r => { const o = { tag: Object.assign({}, (r || {}).tag || {}) }; SLOTS.forEach(x => { o[x.id] = Object.assign({}, (r || {})[x.id] || {}); }); return o; };
 
 /* ---------- Sterne, Level & Belohnungen ---------- */
@@ -625,13 +651,13 @@ function reachedRewards(P){ const out = [];
 /* Erreicht, noch nicht eingelöst und neu (alles, was beim Einführen schon erreicht war, zählt nicht) */
 function useNewRewards(){
   const P = useDoc('points/all'), C = useDoc('rewards/claims'), B = useDoc('rewards/baseline');
-  useEffect(() => { if (DEMO || P === undefined || B !== null) return; const set = {}; reachedRewards(P || {}).forEach(r => set[rewKey(r.who, r.at)] = 1); S.set('rewards/baseline', { set, at: Date.now() }); }, [P, B]);
+  useEffect(() => { if (DEMO || P === undefined || B !== null) return; const set = {}; reachedRewards(P || {}).forEach(r => set[rewKey(r.who, r.at)] = 1); quietly(() => S.set('rewards/baseline', { set, at: Date.now() })); }, [P, B]);
   if (P === undefined || C === undefined || !B) return [];
   const c = C || {}, b = B.set || {};
   return reachedRewards(P || {}).filter(r => !((c[r.who] || {})[r.at]) && !b[rewKey(r.who, r.at)]);
 }
 /* Feier auf allen Geräten auslösen */
-function celebrate(items){ if (!items.length) return; S.set('rewards/celebrate', { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: Date.now(), items }); }
+function celebrate(items){ if (!items.length) return; quietly(() => S.set('rewards/celebrate', { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: Date.now(), items })); }
 function CelebFx(){
   const ref = useRef(null);
   useEffect(() => { const cv = ref.current; if (!cv) return; const cx = cv.getContext('2d'); let W = 0, H = 0, raf = 0, alive = true; const t0 = performance.now();
@@ -1676,7 +1702,18 @@ function flyStars(from, whos, amount){
     });
   } catch (e) {}
 }
-function UndoBar(){
+/* Alter schwebender Knopf – ersetzt durch das Symbol im Menü */
+function UndoBar(){ return null; }
+/* Rückgängig als dezentes festes Symbol im Menü (statt schwebendem Knopf) */
+function UndoNav(){
+  const [n, setN] = useState(undoStack.length);
+  useEffect(() => { const h = () => setN(undoStack.length); window.addEventListener('fb-undo', h); return () => window.removeEventListener('fb-undo', h); }, []);
+  return html`<button type="button" class="navundo" disabled=${!n} title=${n ? 'Letzten Schritt rückgängig machen (noch ' + n + ' möglich)' : 'Nichts zum Rückgängigmachen'}
+    aria-label=${n ? 'Rückgängig, noch ' + n + ' Schritte möglich' : 'Rückgängig, nichts zu tun'}
+    onClick=${() => { if (undoLast()) toast('Letzter Schritt rückgängig gemacht' + (undoStack.length ? ' · noch ' + undoStack.length + ' möglich' : '')); }}>
+    <${Icon} n="undo" size=${22} sw=${2.2} /><span class="lbl">Rückgängig</span>${n ? html`<small aria-hidden="true">${n}</small>` : null}</button>`;
+}
+function UndoBarOld(){
   const [n, setN] = useState(0); const [show, setShow] = useState(false); const tm = useRef(null);
   useEffect(() => { const h = () => { setN(undoStack.length); setShow(undoStack.length > 0); clearTimeout(tm.current); tm.current = setTimeout(() => setShow(false), 15000); };
     window.addEventListener('fb-undo', h); return () => window.removeEventListener('fb-undo', h); }, []);
@@ -1810,7 +1847,7 @@ function Heute({ now }){
   const toggle = async (mid, i, md, srcEl) => { md = md || mode; const lk = md !== 'tag' && locked; const rect = srcEl ? srcEl.getBoundingClientRect() : null;
     const tk = ((r[md] || {})[mid] || [])[i];
     if (!lk && tk && (tk.lock || pinAll(mid)) && !(await needPin(mid, '„' + tk.label + '“ bestätigen'))) return;
-    if (lk) { toast(past ? 'Der ' + SLOTS[slotIdx(mode)].name + ' ist vorbei – hier kann nichts mehr abgehakt werden.' : SLOTS[slotIdx(mode)].name + '-Aufgaben kann man ab ' + SLOTS[slotIdx(mode)].from + ' Uhr abhaken.'); return; }
+    if (lk) { toast(past ? 'Der ' + SLOTS[slotIdx(mode)].name + ' ist vorbei – hier kann nichts mehr abgehakt werden.' : SLOTS[slotIdx(mode)].name + '-Aufgaben kann man ab ' + fmtH(SLOTS[slotIdx(mode)].from) + ' Uhr abhaken.'); return; }
     const k = mid + '-' + md + '-' + i;
     const c = Object.assign({}, mem_.docs['checks/' + rday] || {}); const was = !!c[k]; c[k] = !was;
     if (!was && !DEMO) flyStars(rect, [mid]);
@@ -1926,8 +1963,9 @@ function Heute({ now }){
       ${soonExams.map(x => html`<span class="tchip exam">${countdown(daysUntil(x.datum, now))}: ${x.fach} (${byId[x.kid] ? byId[x.kid].name : ''})</span>`)}
     </a>` : null}
     <${Todos} today=${today} onPress=${(e, t) => startPress(e, null, null, { label: t.title, icon: 'star', todo: t }, null, 'td')} skip=${skipClick} />
-    ${locked ? html`<div class="hint warn" role="status">${past ? 'Der ' + SLOTS[slotIdx(mode)].name + ' ist vorbei. Du siehst, was erledigt wurde – abhaken geht nicht mehr.' : 'Vorschau: ' + SLOTS[slotIdx(mode)].name + '-Aufgaben kann man ab ' + SLOTS[slotIdx(mode)].from + ' Uhr abhaken.'} <a href="#" onClick=${e => { e.preventDefault(); setMode(slot.id); }} style="color:inherit">Zurück zu jetzt</a></div>` : null}
+    ${locked ? html`<div class="hint warn" role="status">${past ? 'Der ' + SLOTS[slotIdx(mode)].name + ' ist vorbei. Du siehst, was erledigt wurde – abhaken geht nicht mehr.' : 'Vorschau: ' + SLOTS[slotIdx(mode)].name + '-Aufgaben kann man ab ' + fmtH(SLOTS[slotIdx(mode)].from) + ' Uhr abhaken.'} <a href="#" onClick=${e => { e.preventDefault(); setMode(slot.id); }} style="color:inherit">Zurück zu jetzt</a></div>` : null}
     ${edit ? html`<div class="hint">Unter jeder Aufgabe: Schloss = mit PIN schützen, Stift = ändern, Mülleimer = löschen. Verschieben: lange drücken und zu einer anderen Person ziehen. Neue Aufgabe: + bei der Person.<div style="margin-top:8px"><button type="button" class="btn small" onClick=${() => openTasks()}><${Icon} n="edit" size=${16} />Alle Aufgaben verwalten</button></div></div>` : null}
+    ${edit ? html`<${SlotTimes} />` : null}
     ${routines === undefined ? html`<div class="loading">Routinen werden geladen …</div>` : html`
     <div class="cols">
       ${MEMBERS.map(m => {
@@ -2166,7 +2204,7 @@ function PersonTaskForm({ mid, mode0, r, onClose, init }){
       ${when === 'once' && date !== iso(new Date()) ? html`<${DateField} label="An welchem Tag?" value=${date} onChange=${setDate} />` : null}
       ${when === 'interval' ? null : html`<div class="field">Wann am Tag? (mehrere antippen möglich)<div class="row" style="gap:6px">
         ${slotChip('tag', 'Ganztags')}
-        ${SLOTS.map(x => slotChip(x.id, x.adv[0].toUpperCase() + x.adv.slice(1) + ' (' + x.from + (x.id === 'abend' ? '' : '–' + SLOTS[slotIdx(x.id) + 1].from) + ' Uhr)'))}
+        ${SLOTS.map(x => slotChip(x.id, x.adv[0].toUpperCase() + x.adv.slice(1) + ' (' + fmtH(x.from) + (x.id === 'abend' ? '' : '–' + fmtH(SLOTS[slotIdx(x.id) + 1].from)) + ' Uhr)'))}
         </div></div>
       <div class="sub" style="font-size:13px">${slotsSel[0] === 'tag' ? (when === 'once' ? 'Bleibt stehen, bis sie abgehakt ist.' : 'Steht den ganzen Tag da – morgens, mittags und abends.') : 'Abhaken geht nur im gewählten Zeitraum. Ist er vorbei, fällt die Aufgabe raus und kann nicht mehr nachträglich abgehakt werden.'}</div>`}
       <label class="check" style="display:flex;gap:10px;align-items:center;font-weight:800"><input type="checkbox" checked=${lk} onChange=${e => setLk(e.target.checked)} style="width:24px;height:24px" /><${Icon} n="lock" size=${18} />Mit Schloss: nur mit PIN der Person abhaken oder verschieben</label>
@@ -3657,13 +3695,14 @@ function App(){
   if (auth === 'out') return html`<${Login} recovery=${recovery} onDone=${() => { window.__fbRecovery = false; setRecovery(false); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} setAuth('fam'); }} onDemo=${() => { startDemo(); setReady(true); setAuth('demo'); }} />`;
   if (auth === 'nofam') return loadErr ? html`<div class="main"><div class="hint warn" role="alert">${loadErr}</div><button type="button" class="btn" onClick=${() => location.reload()}>Neu laden</button></div>` : html`<${FamilyStart} onDone=${() => { showFamilyPath(); setAuth('in'); }} />`;
   if (auth === 'in' && isAdminView()) return html`<${AdminFamilies} />${msg ? html`<div class="toast" role="status">${msg}</div>` : null}`;
-  applyRewardCfg(useDoc('config/rewards'));
+  applyRewardCfg(useDoc('config/rewards')); applySlotCfg(useDoc('config/slots'));
   const newRw = useNewRewards();
   const V = view === 'check' ? Check : { heute: Heute, kalender: Kalender, schule: Schule, einkauf: Einkauf, essen: Essen, sterne: Sterne }[view];
   return html`<div class="app">
     <nav class="nav" aria-label="Hauptmenü">
       <div class="logo"><${Icon} n="home" size=${28} sw=${2.2} /></div>
       ${VIEWS.map(v => { const dot = v.id === 'sterne' && newRw.length; return html`<a href=${'#' + v.id} aria-current=${view === v.id ? 'page' : undefined} aria-label=${dot ? v.label + ', ' + newRw.length + (newRw.length === 1 ? ' neue Belohnung' : ' neue Belohnungen') : undefined} onClick=${() => setView(v.id)}><${Icon} n=${v.icon} size=${26} />${v.label}${dot ? html`<span class="navdot" aria-hidden="true">${newRw.length}</span>` : null}</a>`; })}
+      <${UndoNav} />
       <div class="sync">${ready ? 'Synchron auf allen Geräten' : 'Verbinde …'}<br /><a href="#check" style="width:auto;padding:4px 0;font-size:11px;display:inline">Gerätecheck</a></div>
     </nav>
     <main class="main">
@@ -3682,7 +3721,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '75';
+const APP_VER = '77';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
