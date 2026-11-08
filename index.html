@@ -2505,9 +2505,10 @@ function EventImport({ now, onClose }){
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [found, setFound] = useState(null);
-  const [pick, setPick] = useState({});
+  const [pick, setPick] = useState({}); const [ed, setEd] = useState(null);
+  const upd = (i, o) => setFound(found.map((x, j) => j === i ? Object.assign({}, x, o) : x));
   const run = async () => {
-    setBusy(true); setErr(''); setFound(null);
+    setBusy(true); setErr(''); setFound(null); setEd(null);
     const prompt = 'Heute ist ' + iso(now) + ' (' + WD[now.getDay()] + '). Das Bild ist ein Screenshot oder Foto mit Terminen (z. B. Elternbrief, Einladung, Vereinsplan, Kalender, Nachricht). ' +
       'Familie: ' + MEMBERS.map(m => m.name + (m.role || m.school ? ' (' + [m.role, m.school ? 'Schule' : ''].filter(Boolean).join(', ') + ')' : '')).join(', ') + '. Lies alle Termine aus. ' +
       'Antworte nur mit JSON: {"events":[{"title":string,"date":"YYYY-MM-DD","time":"HH:MM" oder null,"end":"HH:MM" oder null,"who":' + MEMBERS.map(m => '"' + m.id + '"').join('|') + '|"familie","exam":boolean,"fach":string oder null,"note":string oder null}]}. ' +
@@ -2522,6 +2523,8 @@ function EventImport({ now, onClose }){
     setBusy(false);
   };
   const save = () => {
+    const bad = found.find((e, i) => pick[i] && (!(e.title || '').trim() || !/^\d{4}-\d{2}-\d{2}$/.test(e.date || '')));
+    if (bad) { toast('Bitte bei jedem ausgewählten Termin Titel und Datum ausfüllen'); return; }
     let n = 0;
     found.forEach((e,i) => { if (!pick[i]) return; n++;
       if (e.exam && byId[e.who] && byId[e.who].school) S.add('exams', { kid: e.who, fach: e.fach || e.title, datum: e.date, thema: e.note || '' });
@@ -2534,10 +2537,23 @@ function EventImport({ now, onClose }){
     ${!found ? html`<button type="button" class="btn" disabled=${!file || busy} onClick=${run}>${busy ? 'Wird gelesen … (kann bis zu einer Minute dauern)' : 'Termine erkennen'}</button>` : null}
     ${err ? html`<div class="hint warn" role="alert">${err}</div>` : null}
     ${found && found.length ? html`<div class="list">
-      ${found.map((e,i) => html`<label class="check"><input type="checkbox" checked=${!!pick[i]} onChange=${ev => setPick(Object.assign({}, pick, { [i]: ev.target.checked }))} />
-        <span style="flex:1;min-width:0"><span style="display:block;font-size:16px;font-weight:800">${e.exam ? 'Klassenarbeit: ' : ''}${e.title}</span>
-        <span class="sub" style="font-size:14px">${fromIso(e.date).toLocaleDateString('de-DE', { weekday:'short', day:'numeric', month:'long' })}${e.time ? ', ' + e.time + ' Uhr' : ', ganztags'} · ${byId[e.who].name}</span></span>
-        <${Avatar} id=${e.who} size=${32} /></label>`)}
+      <div class="sub" style="font-size:13px">Bitte kurz prüfen. Mit dem Stift lässt sich jeder erkannte Termin vor dem Übernehmen ändern.</div>
+      ${found.map((e,i) => html`<div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px"><label class="check" style="flex:1;min-width:0"><input type="checkbox" checked=${!!pick[i]} onChange=${ev => setPick(Object.assign({}, pick, { [i]: ev.target.checked }))} />
+          <span style="flex:1;min-width:0"><span style="display:block;font-size:16px;font-weight:800">${e.exam ? 'Klassenarbeit: ' : ''}${e.exam ? (e.fach || e.title) : e.title}</span>
+          <span class="sub" style="font-size:14px">${fromIso(e.date).toLocaleDateString('de-DE', { weekday:'short', day:'numeric', month:'long' })}${e.time ? ', ' + e.time + (e.end ? '–' + e.end : '') + ' Uhr' : ', ganztags'} · ${byId[e.who] ? byId[e.who].name : 'Familie'}${e.note ? ' · ' + e.note : ''}</span></span>
+          <${Avatar} id=${e.who} size=${32} /></label>
+          <button type="button" class="btn small ghost" aria-pressed=${ed === i} aria-label=${'„' + e.title + '“ ändern'} onClick=${() => setEd(ed === i ? null : i)}><${Icon} n="edit" size=${18} />${ed === i ? 'Fertig' : ''}</button></div>
+        ${ed === i ? html`<div class="card" style="gap:10px;padding:12px;background:var(--surface-2)">
+          <label class="field">Was?<input value=${e.title} onInput=${ev => upd(i, { title: ev.target.value })} /></label>
+          <${DateField} label="Datum" value=${e.date} onChange=${v => upd(i, { date: v })} />
+          <div class="row"><label class="field" style="flex:1 1 120px">Beginn (leer = ganztags)<input value=${e.time || ''} placeholder="z. B. 15:30" inputmode="numeric" onInput=${ev => upd(i, { time: ev.target.value.trim() || null })} /></label>
+            <label class="field" style="flex:1 1 120px">Ende<input value=${e.end || ''} placeholder="z. B. 17:00" inputmode="numeric" onInput=${ev => upd(i, { end: ev.target.value.trim() || null })} /></label></div>
+          <div class="field">Für wen?<div class="row" style="gap:8px">${['familie'].concat(MEMBERS.map(m => m.id)).map(w => html`<button type="button" class="chip" aria-pressed=${e.who === w} onClick=${() => upd(i, { who: w, exam: e.exam && byId[w] && byId[w].school ? e.exam : false })}>${w === 'familie' ? 'Familie' : byId[w].name}</button>`)}</div></div>
+          ${byId[e.who] && byId[e.who].school ? html`<label style="display:flex;gap:10px;align-items:center;font-weight:700"><input type="checkbox" checked=${!!e.exam} onChange=${ev => upd(i, { exam: ev.target.checked })} style="width:22px;height:22px" />Klassenarbeit (kommt in den Stundenplan-Bereich)</label>
+            ${e.exam ? html`<label class="field">Fach<input value=${e.fach || ''} onInput=${ev => upd(i, { fach: ev.target.value })} placeholder="z. B. Mathe" /></label>` : null}` : null}
+          <label class="field">Notiz<input value=${e.note || ''} onInput=${ev => upd(i, { note: ev.target.value || null })} /></label>
+        </div>` : null}</div>`)}
       <button type="button" class="btn" onClick=${save}>Ausgewählte übernehmen</button>
     </div>` : null}
   <//>`;
@@ -2767,15 +2783,27 @@ function TimetableImport({ kid, onClose }){
   const run = async () => {
     setBusy(true); setErr(''); setRes(null);
     const prompt = 'Das Bild zeigt den Schul-Stundenplan eines Grundschulkindes (Montag bis Freitag). Lies ihn genau aus. ' +
-      'Antworte nur mit JSON: {"times":["8:00","8:45",...],"days":[[...],[...],[...],[...],[...]]}. ' +
-      '"times" = Beginn jeder Unterrichtsstunde (Zeile) von oben nach unten; sind keine Zeiten zu sehen, nimm "". ' +
+      'Antworte nur mit JSON: {"times":["8:00","8:50",...],"ends":["8:45","9:35",...],"pauses":[{"after":2,"from":"9:35","to":"9:55","name":"Hofpause"}],"days":[[...],[...],[...],[...],[...]]}. ' +
+      '"times" = Beginn jeder Unterrichtsstunde (Zeile) von oben nach unten; sind keine Zeiten zu sehen, nimm "". "ends" = Ende jeder Stunde, falls zu sehen, sonst "". ' +
+      '"pauses" = alle im Plan eingetragenen Pausen: "after" = Nummer der Stunde davor (1 = nach der 1. Stunde), Beginn, Ende und Name, falls angegeben (z. B. Frühstückspause, Hofpause); sonst []. ' +
       '"days" = genau 5 Listen (Mo, Di, Mi, Do, Fr), jede so lang wie "times": Fachname kurz auf Deutsch (z. B. "Deutsch", "Mathe", "Sport", "Kunst") oder null, wenn frei. Pausen als eigene Zeilen weglassen. Höchstens 10 Zeilen.';
     try {
       const r = await readImage(file, prompt);
       if (!r || !Array.isArray(r.times) || !Array.isArray(r.days) || !r.times.length) throw { code:'invalid_json' };
       const n = Math.min(r.times.length, 10);
       const days = [0,1,2,3,4].map(i => { const d = Array.isArray(r.days[i]) ? r.days[i] : []; return Array.from({ length: n }, (x, j) => (d[j] ? String(d[j]).trim() : null)); });
-      setRes({ times: r.times.slice(0, n).map(t => (t ? String(t) : '')), days });
+      /* Pausen selbst errechnen: Ende jeder Stunde aus dem Plan, aus eingetragenen Pausen oder aus der üblichen Stundenlänge */
+      const times = r.times.slice(0, n).map(t => (t ? String(t) : '')); const st = times.map(toMin);
+      const pz = (Array.isArray(r.pauses) ? r.pauses : []).filter(x => x && +x.after >= 1 && +x.after < n);
+      pz.forEach(x => { const to = toMin(x.to); if (to != null && st[+x.after] == null) { st[+x.after] = to; times[+x.after] = hm2(to); } });
+      const gaps = []; for (let i = 0; i + 1 < n; i++) if (st[i] != null && st[i + 1] != null) gaps.push(st[i + 1] - st[i]);
+      const ok = gaps.filter(g => g >= 30 && g <= 60); const len = ok.length ? Math.min.apply(null, ok) : 45;
+      const re = Array.isArray(r.ends) ? r.ends : [];
+      const ends = times.map((t, i) => { const e = toMin(re[i]); if (e != null && st[i] != null && e > st[i]) return hm2(e);
+        const pp = pz.find(x => +x.after === i + 1); if (pp && toMin(pp.from) != null && st[i] != null && toMin(pp.from) > st[i]) return hm2(toMin(pp.from));
+        if (st[i] == null) return ''; let e2 = st[i] + len; if (st[i + 1] != null && e2 > st[i + 1]) e2 = st[i + 1]; return hm2(e2); });
+      const pauseNames = {}; pz.forEach(x => { if (x.name && String(x.name).trim()) pauseNames[+x.after - 1] = String(x.name).trim().slice(0, 30); });
+      setRes({ times, ends, pauseNames, days });
     } catch (e) { setErr(sampleErr(e)); }
     setBusy(false);
   };
@@ -2783,11 +2811,13 @@ function TimetableImport({ kid, onClose }){
     <${FilePick} file=${file} setFile=${f => { setFile(f); setRes(null); setErr(''); }} label="Screenshot oder Bild vom Stundenplan wählen" />
     ${!res ? html`<button type="button" class="btn" disabled=${!file || busy} onClick=${run}>${busy ? 'Wird gelesen … (kann bis zu einer Minute dauern)' : 'Stundenplan erkennen'}</button>` : null}
     ${err ? html`<div class="hint warn" role="alert">${err}</div>` : null}
-    ${res ? html`<div class="hint">Bitte kurz prüfen. Einzelne Stunden kannst du danach antippen und ändern.</div>
+    ${res ? html`<div class="hint">Bitte kurz prüfen. Die Pausen wurden aus den Zeiten berechnet. Einzelne Stunden und Pausen kannst du danach antippen und ändern.</div>
       <div class="ovx"><div class="tt" style="grid-template-columns:56px repeat(5,minmax(90px,1fr));min-width:520px">
         <div></div>${['Mo','Di','Mi','Do','Fr'].map(d => html`<div class="h">${d}</div>`)}
-        ${res.times.map((t, ri) => html`<div class="tm"><span>${ri+1}.</span><small>${t}</small></div>
-          ${res.days.map(d => html`<div class=${'cell' + (d[ri] ? '' : ' empty-cell')} style=${d[ri] ? 'background:var(--tone-' + toneOf(d[ri]) + ')' : ''}>${d[ri] || '–'}</div>`)}`)}
+        ${res.times.map((t, ri) => { const a = toMin((res.ends || [])[ri]), b = toMin(res.times[ri + 1]);
+          return html`<div class="tm"><span>${ri+1}.</span><small>${t}${res.ends && res.ends[ri] ? '–' + res.ends[ri] : ''}</small></div>
+          ${res.days.map(d => html`<div class=${'cell' + (d[ri] ? '' : ' empty-cell')} style=${d[ri] ? 'background:var(--tone-' + toneOf(d[ri]) + ')' : ''}>${d[ri] || '–'}</div>`)}
+          ${a != null && b != null && b - a >= 5 ? html`<div class="pausecell" style="grid-column:1 / -1">${((res.pauseNames || {})[ri]) || 'Pause'} ${hm2(a)}–${hm2(b)} (${b - a} Min.)</div>` : null}`; })}
       </div></div>
       <div class="row"><button type="button" class="btn" onClick=${() => { S.set('timetables/' + kid, Object.assign({ updatedAt: Date.now() }, res)); toast('Stundenplan gespeichert'); onClose(); }}>Übernehmen</button>
         <button type="button" class="btn ghost" onClick=${() => setRes(null)}>Nochmal einlesen</button></div>` : null}
@@ -3765,7 +3795,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '81';
+const APP_VER = '83';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
