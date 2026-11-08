@@ -2074,6 +2074,8 @@ function GroupEdit({ grp, onDone }){
   const [wdays, setWdays] = useState(grp.days ? grp.days.slice() : [0,1,2,3,4,5,6]);
   const [every, setEvery] = useState(grp.every || 4); const [date, setDate] = useState(grp.date || iso(new Date()));
   const [repeat, setRepeat] = useState(grp.repeat || 'none'); const [stars, setStars] = useState(grp.stars || 1);
+  const [pmds, setPmds] = useState(pt && !grp.every ? Array.from(new Set(grp.entries.map(t => t.slot || 'tag'))) : []);
+  const [tslot, setTslot] = useState(td ? (grp.entries[0].slot || 'tag') : 'tag');
   const [conf, setConf] = useState(false);
   const flip = (L, set, v) => set(L.indexOf(v) >= 0 ? (L.length > 1 ? L.filter(x => x !== v) : L) : L.concat([v]));
   const wk = wdays.slice().sort().join('');
@@ -2088,11 +2090,15 @@ function GroupEdit({ grp, onDone }){
       const lock = grp.entries.some(en => en.t.lock);
       whos.forEach(w => mds.forEach(md => { if (have[md + '|' + w]) return; next[md][w] = ((next[md] || {})[w] || []).concat([Object.assign({ label: l, icon, g }, days ? { days } : {}, lock ? { lock: true } : {})]); }));
       S.set('config/routines', next); S.set('checks/' + rday, c); }
-    else if (pt) { const base = grp.entries[0]; const have = {};
-      grp.entries.forEach(t => { have[t.who] = 1; if (whos.indexOf(t.who) < 0) { S.del('ptasks/' + t.id); return; }
-        const b = Object.assign({}, mem_.docs['ptasks/' + t.id] || t, { label: l, icon, g }); delete b.id; if (b.every) b.every = every; else b.date = date; S.set('ptasks/' + t.id, b); });
-      whos.forEach(w => { if (have[w]) return; S.add('ptasks', Object.assign({ who: w, label: l, icon, g, done: false }, base.every ? { every, date: iso(new Date()) } : { date, slot: base.slot || null }, base.lock ? { lock: true } : {})); }); }
-    else { grp.entries.forEach(t => { const b = Object.assign({}, mem_.docs['todos/' + t.id] || t, { title: l, repeat, stars, g }); delete b.id; if (repeat === 'interval') b.every = every; else delete b.every; S.set('todos/' + t.id, b); }); }
+    else if (pt) { const base = grp.entries[0]; const have = {}; const sl = base.every ? [''] : pmds;
+      const free = w => sl.find(m => !have[w + '|' + m] && !grp.entries.some(x => x.who === w && (x.slot || 'tag') === m));
+      grp.entries.forEach(t => { let md = base.every ? '' : (t.slot || 'tag');
+        if (whos.indexOf(t.who) >= 0 && sl.indexOf(md) < 0) { const f = free(t.who); if (f) md = f; } /* Tageszeit geändert: Aufgabe einfach umstellen */
+        if (whos.indexOf(t.who) < 0 || sl.indexOf(md) < 0 || have[t.who + '|' + md]) { S.del('ptasks/' + t.id); return; } have[t.who + '|' + md] = 1;
+        const b = Object.assign({}, mem_.docs['ptasks/' + t.id] || t, { label: l, icon, g }); delete b.id; if (b.every) b.every = every; else { b.date = date; b.slot = md === 'tag' ? null : md; } S.set('ptasks/' + t.id, b); });
+      whos.forEach(w => sl.forEach(md => { if (have[w + '|' + md]) return; S.add('ptasks', Object.assign({ who: w, label: l, icon, g, done: false }, base.every ? { every, date: iso(new Date()) } : { date, slot: md === 'tag' ? null : md }, base.lock ? { lock: true } : {})); })); }
+    else { grp.entries.forEach(t => { const b = Object.assign({}, mem_.docs['todos/' + t.id] || t, { title: l, repeat, stars, g }); delete b.id; if (repeat === 'interval') b.every = every; else delete b.every;
+      if (tslot === 'tag') delete b.slot; else b.slot = tslot; S.set('todos/' + t.id, b); }); }
     toast('„' + l + '“ wurde geändert'); onDone(); };
   return html`<${Sheet} title=${'„' + grp.label + '“ ändern'} onClose=${onDone}>
     <form style="display:flex;flex-direction:column;gap:12px" onSubmit=${save}>
@@ -2107,6 +2113,8 @@ function GroupEdit({ grp, onDone }){
           <button type="button" class="chip" aria-pressed=${wk === '06'} onClick=${() => setWdays([0,6])}>Wochenende</button></div>
           <div class="wdrow">${[1,2,3,4,5,6,0].map(dd => html`<button type="button" class="chip" style="min-width:0" aria-pressed=${wdays.indexOf(dd) >= 0 && wdays.length < 7} onClick=${() => setWdays(wdays.length === 7 ? [dd] : wdays.indexOf(dd) >= 0 ? (wdays.length > 1 ? wdays.filter(x => x !== dd) : wdays) : wdays.concat([dd]))}>${WD[dd]}</button>`)}</div></div>
         <div class="field">Wann am Tag?<div class="row" style="gap:6px">${MDS().map(md => html`<button type="button" class="chip" aria-pressed=${mds.indexOf(md) >= 0} onClick=${() => md === 'tag' ? setMds(['tag']) : setMds(mds.indexOf(md) >= 0 ? (mds.filter(x => x !== md && x !== 'tag').length ? mds.filter(x => x !== md && x !== 'tag') : mds) : mds.filter(x => x !== 'tag').concat([md]))}>${mdName(md)}</button>`)}</div></div>` : null}
+      ${pt && !grp.every ? html`<div class="field">Wann am Tag?<div class="row" style="gap:6px">${MDS().map(md => html`<button type="button" class="chip" aria-pressed=${pmds.indexOf(md) >= 0} onClick=${() => md === 'tag' ? setPmds(['tag']) : setPmds(pmds.indexOf(md) >= 0 ? (pmds.filter(x => x !== md && x !== 'tag').length ? pmds.filter(x => x !== md && x !== 'tag') : pmds) : pmds.filter(x => x !== 'tag').concat([md]))}>${mdName(md)}</button>`)}</div></div>` : null}
+      ${td ? html`<div class="field">Wann am Tag?<div class="row" style="gap:6px">${MDS().map(md => html`<button type="button" class="chip" aria-pressed=${tslot === md} onClick=${() => setTslot(md)}>${mdName(md)}</button>`)}</div></div>` : null}
       ${pt && grp.every || td && repeat === 'interval' ? html`<div class="field">Wie oft?<div class="row" style="gap:6px">${EVERY.map(n => html`<button type="button" class="chip" aria-pressed=${every === n} onClick=${() => setEvery(n)}>${everyTxt(n)}</button>`)}</div></div>` : null}
       ${pt && !grp.every ? html`<${DateField} label="An welchem Tag?" value=${date} onChange=${setDate} />` : null}
       ${td ? html`<div class="field">Wiederholen?<div class="row" style="gap:6px">${REPEATS.map(r => html`<button type="button" class="chip" aria-pressed=${repeat === r[0]} onClick=${() => setRepeat(r[0])}>${r[1]}</button>`)}</div></div>
@@ -3383,8 +3391,10 @@ function Sterne({ now }){
   const parentOk = async why => { if (DEMO) return true; const P = pinsDoc();
     if (!MEMBERS.some(m => !m.kid && P[m.id] && P[m.id].sup)) { toast('Bitte zuerst bei Mama oder Papa eine Super-PIN festlegen (auf „Heute“ den Namen antippen).'); return false; }
     return needPin(parentId(), why + ' – Super-PIN von Mama oder Papa', true); };
-  const claim = async (who, at) => { if (!(await parentOk('Belohnung einlösen'))) return; const c = Object.assign({}, C); c[who] = Object.assign({}, c[who] || {}, { [at]: iso(now) }); S.set('rewards/claims', c); toast('Belohnung eingelöst – viel Spaß!'); };
-  const unclaim = async (who, at) => { if (!(await parentOk('Einlösen rückgängig machen'))) return; const c = Object.assign({}, C); c[who] = Object.assign({}, c[who] || {}); delete c[who][at]; S.set('rewards/claims', c); };
+  /* Einlösen: ohne Sperre – nur wenn die Person eine eigene PIN hat, wird diese abgefragt (Familienziele immer frei) */
+  const claimOk = (who, why) => who === 'familie' || !byId[who] ? Promise.resolve(true) : needPin(who, why + ' – ' + byId[who].name);
+  const claim = async (who, at) => { if (!(await claimOk(who, 'Belohnung einlösen'))) return; const c = Object.assign({}, C); c[who] = Object.assign({}, c[who] || {}, { [at]: iso(now) }); S.set('rewards/claims', c); toast('Belohnung eingelöst – viel Spaß!'); };
+  const unclaim = async (who, at) => { if (!(await claimOk(who, 'Einlösen rückgängig machen'))) return; const c = Object.assign({}, C); c[who] = Object.assign({}, c[who] || {}); delete c[who][at]; S.set('rewards/claims', c); };
   const NR = useNewRewards(); const isNew = (w, at) => NR.some(r => r.who === w && r.at === at);
   const sp = P[sel] || 0; const si = levelIdx(sp);
   if (points === undefined) return html`<div class="loading">Sterne werden geladen …</div>`;
@@ -3755,7 +3765,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '79';
+const APP_VER = '81';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
