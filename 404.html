@@ -2585,15 +2585,15 @@ function Schule({ now }){
                       onClick=${() => setSheet({ kind:'cell', di, ri, f: f || '' })} aria-label=${WD[d.getDay()] + ' ' + (ri+1) + '. Stunde: ' + (f || 'frei') + (fr >= 1 ? ', vorbei' : fr > 0 ? ', läuft gerade' : '')}>
                       ${ov(fr)}<span style="position:relative">${f || '–'}</span>${ex ? html`<span class="badge">Arbeit</span>` : null}</button>`); });
                   const na = ri + 1 < tt.times.length ? toMin(tt.times[ri + 1]) : null;
-                  if (b != null && na != null && na - b >= 5) {
-                    out.push(html`<div class="tm pausetm"><small>Pause ${hm2(b)}–${hm2(na)}</small></div>`);
-                    days.forEach(d => { const fr = frac(d, b, na); out.push(html`<div class=${'pausecell' + (fr >= 1 ? ' pastcell' : '')}>${ov(fr)}<span style="position:relative">Pause</span></div>`); });
+                  if (b != null && na != null && na - b >= 5) { const pn = ((tt.pauseNames || {})[ri]) || 'Pause'; const op = () => setSheet({ kind:'pause', ri });
+                    out.push(html`<button type="button" class="tm pausetm" style="border:none;background:none;font:inherit;color:inherit;cursor:pointer" onClick=${op} aria-label=${pn + ' ' + hm2(b) + ' bis ' + hm2(na) + ' bearbeiten'}><small>${pn} ${hm2(b)}–${hm2(na)}</small></button>`);
+                    days.forEach(d => { const fr = frac(d, b, na); out.push(html`<button type="button" class=${'pausecell' + (fr >= 1 ? ' pastcell' : '')} style="border:none;font:inherit;cursor:pointer" onClick=${op} tabindex="-1" aria-hidden="true">${ov(fr)}<span style="position:relative">${pn}</span></button>`); });
                   }
                 });
                 return out; })()}
             </div></div>
             <div class="row" style="justify-content:space-between">
-              <span class="sub" style="font-size:13px">Tippe auf eine Stunde, um sie zu ändern oder die Zeile zu löschen.</span>
+              <span class="sub" style="font-size:13px">Tippe auf eine Stunde, um sie zu ändern oder die Zeile zu löschen – oder auf eine Pause, um sie einzustellen.</span>
               <div class="row">
                 <button type="button" class="btn small ghost" onClick=${() => S.set('timetables/' + kid, Object.assign({}, tt, { times: tt.times.concat(['']), days: tt.days.map(d => (d || []).concat([null])) }))}>+ Stunde</button>
                 <button type="button" class="btn small soft" onClick=${() => setSheet({ kind:'shot' })}><${Icon} n="camera" size=${18} />Neu einlesen</button>
@@ -2617,7 +2617,8 @@ function Schule({ now }){
       </aside>
     </div>
     ${sheet && sheet.kind === 'shot' ? html`<${TimetableImport} kid=${kid} onClose=${() => setSheet(null)} />` : null}
-    ${sheet && sheet.kind === 'cell' ? html`<${CellEdit} kid=${kid} tt=${tt} at=${sheet} subjects=${subjects} onClose=${() => setSheet(null)} />` : null}`;
+    ${sheet && sheet.kind === 'cell' ? html`<${CellEdit} kid=${kid} tt=${tt} at=${sheet} subjects=${subjects} onClose=${() => setSheet(null)} onPause=${ri => setSheet({ kind:'pause', ri })} />` : null}
+    ${sheet && sheet.kind === 'pause' ? html`<${PauseEdit} kid=${kid} tt=${tt} ri=${sheet.ri} onClose=${() => setSheet(null)} />` : null}`;
 }
 function BusCard({ tt, kid, now }){
   const cfg = useDoc('config/bus');
@@ -2698,7 +2699,36 @@ function ExamForm({ kid, subjects, now }){
     <button class="btn" type="submit"><${Icon} n="plus" size=${20} />Eintragen</button>
   </form>`;
 }
-function CellEdit({ kid, tt, at, subjects, onClose }){
+/* Pause zwischen zwei Stunden bearbeiten (Beginn = Ende der Stunde davor, Ende = Beginn der nächsten) */
+function PauseEdit({ kid, tt, ri, onClose }){
+  const oldA = lessonEnd(tt, ri), oldB = toMin(tt.times[ri + 1]);
+  const [a, setA] = useState(hm2(oldA)); const [b, setB] = useState(hm2(oldB));
+  const [name, setName] = useState(((tt.pauseNames || {})[ri]) || ''); const [shift, setShift] = useState(true);
+  const am = toMin(a), bm = toMin(b); const len = am != null && bm != null ? bm - am : null;
+  const setLen = n => { if (am != null) setB(hm2(am + n)); };
+  const save = () => { if (am == null || bm == null) { toast('Bitte Beginn und Ende als Uhrzeit eintragen, z. B. 9:30'); return; }
+    if (bm < am) { toast('Das Ende der Pause muss nach dem Beginn liegen'); return; }
+    const times = tt.times.slice(); const ends = tt.times.map((x, j) => (tt.ends && tt.ends[j]) || hm2(lessonEnd(tt, j)));
+    ends[ri] = hm2(am); const delta = bm - (oldB == null ? bm : oldB);
+    times[ri + 1] = hm2(bm);
+    if (shift && delta) for (let j = ri + 1; j < times.length; j++) { if (j > ri + 1 && toMin(times[j]) != null) times[j] = hm2(toMin(times[j]) + delta); if (toMin(ends[j]) != null) ends[j] = hm2(toMin(ends[j]) + delta); }
+    else if (!shift && toMin(ends[ri + 1]) != null && toMin(ends[ri + 1]) <= bm) ends[ri + 1] = hm2(bm + 45);
+    const pn = Object.assign({}, tt.pauseNames || {}); if (name.trim()) pn[ri] = name.trim(); else delete pn[ri];
+    S.set('timetables/' + kid, Object.assign({}, tt, { times, ends, pauseNames: pn, updatedAt: Date.now() }));
+    toast(len > 0 ? (name.trim() || 'Pause') + ' ' + hm2(am) + '–' + hm2(bm) + ' gespeichert' : 'Pause entfernt'); onClose(); };
+  return html`<${Sheet} title=${'Pause nach der ' + (ri + 1) + '. Stunde'} onClose=${onClose}>
+    <form style="display:flex;flex-direction:column;gap:12px" onSubmit=${e => { e.preventDefault(); save(); }}>
+      <div class="row"><label class="field" style="flex:1">Pause von<input id="pause-a" value=${a} onInput=${e => setA(e.target.value)} placeholder="z. B. 9:30" inputmode="numeric" /></label>
+        <label class="field" style="flex:1">bis<input id="pause-b" value=${b} onInput=${e => setB(e.target.value)} placeholder="z. B. 9:50" inputmode="numeric" /></label></div>
+      <div class="field">Länge${len != null && len >= 0 ? ': ' + len + ' Minuten' : ''}<div class="row" style="gap:6px">${[0, 5, 10, 15, 20, 25, 30].map(n => html`<button type="button" class="chip" aria-pressed=${len === n} onClick=${() => setLen(n)}>${n ? n + ' Min.' : 'keine Pause'}</button>`)}</div></div>
+      <label class="field">Name (freiwillig)<input value=${name} onInput=${e => setName(e.target.value)} placeholder="z. B. Hofpause, Frühstück" /></label>
+      <label style="display:flex;gap:10px;align-items:center;font-weight:700"><input type="checkbox" checked=${shift} onChange=${e => setShift(e.target.checked)} style="width:22px;height:22px" />Folgende Stunden mitverschieben</label>
+      <div class="sub" style="font-size:13px">Gilt für alle Tage. ${shift ? 'Wird die Pause länger oder kürzer, rücken alle Stunden danach entsprechend.' : 'Nur die nächste Stunde beginnt dann zu einer anderen Zeit.'}</div>
+      <div class="row"><button class="btn" type="submit">Speichern</button><button type="button" class="btn ghost" onClick=${onClose}>Abbrechen</button></div>
+    </form>
+  <//>`;
+}
+function CellEdit({ kid, tt, at, subjects, onClose, onPause }){
   const [conf, setConf] = useState(false);
   const delRow = () => { const cut = a => (a || []).filter((x, j) => j !== at.ri);
     const ends = tt.times.map((x, j) => (tt.ends && tt.ends[j]) || hm2(lessonEnd(tt, j)));
@@ -2715,6 +2745,7 @@ function CellEdit({ kid, tt, at, subjects, onClose }){
       <div class="row"><label class="field" style="flex:1">Beginn dieser Stunde<input id="cell-time" value=${time} onInput=${e => setTime(e.target.value)} placeholder="z. B. 8:00" /></label>
         <label class="field" style="flex:1">Ende dieser Stunde<input id="cell-end" value=${endT} onInput=${e => setEndT(e.target.value)} placeholder="z. B. 8:45" /></label></div>
       <div class="sub" style="font-size:13px">Gilt für alle Tage. Zwischen zwei Stunden entsteht automatisch eine Pause.</div>
+      ${onPause && at.ri + 1 < tt.times.length ? html`<button type="button" class="btn small ghost" style="align-self:flex-start" onClick=${() => onPause(at.ri)}>Pause nach dieser Stunde einstellen</button>` : null}
       <div class="row"><button class="btn" type="submit">Speichern</button><button type="button" class="btn ghost" onClick=${() => save('')}>Stunde frei</button></div>
       ${tt.times.length > 1 ? (conf ? html`<div class="hint warn"><b>Die ganze ${at.ri + 1}. Stunde löschen?</b> Die Zeile verschwindet an allen Tagen, die Stunden darunter rücken nach oben.
           <div class="row" style="margin-top:8px"><button type="button" class="btn small" style="background:var(--danger);color:#fff" onClick=${delRow}><${Icon} n="bin" size=${16} />Zeile löschen</button>
@@ -3721,7 +3752,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '77';
+const APP_VER = '78';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
