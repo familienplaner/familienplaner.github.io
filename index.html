@@ -84,6 +84,17 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .rewtx{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}.rewtx input{height:48px;font-size:16px;padding:0 12px;border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--fg);width:100%;box-sizing:border-box}.rewtx .sub{font-size:13px}.rewlv{font-size:13px;font-weight:800;color:var(--muted)}
 .diffbox{display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:16px;background:var(--surface-2)}.diffbox input[type=range]{width:100%;accent-color:var(--star-line);height:36px}
 .diffval{font-weight:900;color:var(--star-line)}.diffticks{display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:var(--muted)}
+.lovehint{position:relative;overflow:hidden;display:flex;gap:12px;align-items:flex-start;background:linear-gradient(120deg,#ffe3ec,#ffd1dc 55%,#ffe8d6)!important;color:#5a1830!important;border:none!important}
+.loveemo{font-size:34px;line-height:1;position:relative}
+.lovefloat i{position:absolute;bottom:-20px;color:#ff4d6d;opacity:0;font-style:normal;animation:lovefl 6s ease-in infinite}
+.lovefloat i:nth-child(1){left:8%;animation-delay:0s}.lovefloat i:nth-child(2){left:28%;animation-delay:1.2s;font-size:12px}.lovefloat i:nth-child(3){left:47%;animation-delay:2.5s}
+.lovefloat i:nth-child(4){left:66%;animation-delay:.6s;font-size:20px}.lovefloat i:nth-child(5){left:82%;animation-delay:3.3s;font-size:13px}.lovefloat i:nth-child(6){left:93%;animation-delay:1.8s}
+@keyframes lovefl{0%{transform:translateY(0) scale(.8);opacity:0}15%{opacity:.55}100%{transform:translateY(-130px) scale(1.2);opacity:0}}
+.heartrain{position:fixed;inset:0;pointer-events:none;z-index:640;overflow:hidden}
+.heartrain i{position:absolute;bottom:-40px;font-style:normal;animation:heartup 4.2s ease-in forwards;opacity:0}
+@keyframes heartup{0%{transform:translateY(0) rotate(-10deg);opacity:0}10%{opacity:.95}100%{transform:translateY(-110vh) rotate(15deg);opacity:0}}
+.specev{background:linear-gradient(90deg,#ffd1dc,#ffe8d6)!important;color:#5a1830!important}
+@media (prefers-reduced-motion:reduce){.lovefloat{display:none}}
 .nav .sync{margin-top:auto;font-size:11px;font-weight:700;color:var(--muted);text-align:center;padding:0 8px;line-height:1.3}
 .main{flex:1;min-width:0;overflow:auto;padding-block:22px 28px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
 .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
@@ -870,7 +881,12 @@ const EVERY = [1,2,3,4,6,8];
 const EV_REPS = [['', 'Nie'], ['w1', 'Jede Woche'], ['w2', 'Alle 2 Wochen'], ['w3', 'Alle 3 Wochen'], ['w4', 'Alle 4 Wochen'], ['m', 'Jeden Monat'], ['y', 'Jedes Jahr']];
 const evRepKey = e => !e.rep ? '' : e.rep === 'w' ? 'w' + (e.every || 1) : e.rep;
 const evRepTxt = e => (EV_REPS.find(r => r[0] === evRepKey(e)) || ['', ''])[1];
-function evOn(e, ds){
+/* Mehrtägige Termine (z. B. Urlaub): e.to = letzter Tag. evStart = beginnt an diesem Tag, evOn = läuft an diesem Tag */
+const evSpan = e => e.to && e.to > e.date ? Math.round((fromIso(e.to) - fromIso(e.date)) / 864e5) : 0;
+function evOn(e, ds){ const n = evSpan(e); if (!n) return evStart(e, ds); for (let k = 0; k <= n; k++) if (evStart(e, iso(addDays(fromIso(ds), -k)))) return true; return false; }
+const evDayNo = (e, ds) => { const n = evSpan(e); for (let k = 0; k <= n; k++) if (evStart(e, iso(addDays(fromIso(ds), -k)))) return k + 1; return 1; };
+const evSpanTxt = (e, ds) => { const n = evSpan(e); return n ? 'Tag ' + evDayNo(e, ds) + ' von ' + (n + 1) : ''; };
+function evStart(e, ds){
   if (!e.rep) return e.date === ds;
   if (ds < e.date || (e.until && ds > e.until) || (e.skip && e.skip.indexOf(ds) >= 0)) return false;
   const a = fromIso(e.date), b = fromIso(ds);
@@ -1005,7 +1021,7 @@ const IC = {
   cart:'M3 4h2l2.4 11h11L21 7H6.4M9 20h.01M18 20h.01',
   home:'M3 11l9-8 9 8M5 9.5V21h14V9.5M10 21v-6h4v6',
   sun:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
-  plus:'M12 5v14M5 12h14', bell:'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0', cake:'M4 21h16M5 21v-8h14v8M5 13.5c1.2 1.3 2.8 1.3 3.5 0 .7 1.3 2.3 1.3 3.5 0 .7 1.3 2.3 1.3 3.5 0 .7 1.3 2.3 1.3 3.5 0M12 4.5v5M12 2.5c-.9.9-.9 1.7 0 2 .9-.3.9-1.1 0-2', up:'M6 15l6-6 6 6', down:'M6 9l6 6 6-6', users:'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1M16 3.5a4 4 0 0 1 0 7.5M19 14a5 5 0 0 1 3 4.6V21',
+  plus:'M12 5v14M5 12h14', heart:'M12 20s-7-4.4-9.2-8.6A4.8 4.8 0 0 1 12 6.3a4.8 4.8 0 0 1 9.2 5.1C19 15.6 12 20 12 20z', bell:'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0', cake:'M4 21h16M5 21v-8h14v8M5 13.5c1.2 1.3 2.8 1.3 3.5 0 .7 1.3 2.3 1.3 3.5 0 .7 1.3 2.3 1.3 3.5 0 .7 1.3 2.3 1.3 3.5 0M12 4.5v5M12 2.5c-.9.9-.9 1.7 0 2 .9-.3.9-1.1 0-2', up:'M6 15l6-6 6 6', down:'M6 9l6 6 6-6', users:'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1M16 3.5a4 4 0 0 1 0 7.5M19 14a5 5 0 0 1 3 4.6V21',
   x:'M6 6l12 12M18 6L6 18',
   check:'M5 12.5l4.5 4.5L19 7.5',
   mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3M8 21h8',
@@ -1956,15 +1972,17 @@ function Heute({ now }){
     <div class="slotbar"><div class="seg" role="group" aria-label="Tageszeit">
           ${SLOTS.map(x => html`<button type="button" aria-pressed=${mode === x.id} onClick=${() => setMode(x.id)} style=${slotIdx(x.id) < slotIdx(slot.id) && mode !== x.id ? 'opacity:.55' : ''}><${Icon} n=${x.icon} size=${22} />${x.name}</button>`)}
         </div></div>
+    ${chips.filter(e => specOf(e) && evStart(e, today)).map(e => html`<${LoveHint} e=${e} ds=${today} />`)}
+    ${chips.some(e => specOf(e) && evStart(e, today)) ? html`<${HeartRain} day=${today} />` : null}
     ${(bdHeute || []).filter(x => bdayOn(x, today)).map(x => html`<div class="hint bdhint" role="status"><${Icon} n="cake" size=${20} /><span><b>${x.name}</b> hat heute Geburtstag${x.year ? ' und wird ' + bdayAge(x, today) : ''}! Herzlichen Glückwunsch!</span></div>`)}
-    ${(() => { const tm = iso(addDays(fromIso(today), 1)); const bt = (bdHeute || []).filter(x => bdayOn(x, tm)); const ht = holidayOf(tm);
-      return bt.length || ht ? html`<div class="hint" style="display:flex;align-items:center;gap:8px;font-size:14px"><${Icon} n="cal" size=${18} /><span>Morgen: ${[].concat(bt.map(x => x.name + ' hat Geburtstag' + (x.year ? ' (wird ' + bdayAge(x, tm) + ')' : '')), ht ? [ht.name + (ht.he ? ' (Feiertag in Hessen)' : ' (Feiertag)')] : []).join(' · ')}</span></div>` : null; })()}
+    ${(() => { const tm = iso(addDays(fromIso(today), 1)); const bt = (bdHeute || []).filter(x => bdayOn(x, tm)); const ht = holidayOf(tm); const st = events.filter(e => specOf(e) && evStart(e, tm));
+      return bt.length || ht || st.length ? html`<div class="hint" style="display:flex;align-items:center;gap:8px;font-size:14px"><${Icon} n="cal" size=${18} /><span>Morgen: ${[].concat(bt.map(x => x.name + ' hat Geburtstag' + (x.year ? ' (wird ' + bdayAge(x, tm) + ')' : '')), ht ? [ht.name + (ht.he ? ' (Feiertag in Hessen)' : ' (Feiertag)')] : [], st.map(e => specOf(e).emoji + ' ' + e.title + (specOf(e).kind === 'wed' ? ' – schon an eine Kleinigkeit gedacht?' : ''))).join(' · ')}</span></div>` : null; })()}
     ${holidayOf(today) ? html`<div class="hint" style="display:flex;align-items:center;gap:8px"><${Icon} n="star" size=${18} /><span>Heute ist Feiertag: <b>${holidayOf(today).name}</b>${holidayOf(today).he ? ' (in Hessen)' : ''}${fromIso(today).getDay() % 6 !== 0 ? ' – kein Bus.' : ''}</span></div>`
       : schoolFree(today) && fromIso(today).getDay() % 6 !== 0 ? html`<div class="hint" style="display:flex;align-items:center;gap:8px"><${Icon} n="sun" size=${18} />Heute schulfrei: ${schoolFree(today)} – kein Bus.</div>` : null}
     <${BusAmpel} buses=${busesOn(now)} allBuses=${busesOn(now, true)} today=${today} />
     ${(chips.length || soonExams.length) ? html`<a href="#kalender" class="todaychips" style="text-decoration:none;color:inherit">
       <span class="sub" style="font-size:14px;font-weight:800">Heute & bald</span>
-      ${chips.map(e => { const bn = binOf(e); return html`<span class="tchip" style=${binCss(bn)}>${bn ? html`<${Icon} n="bin" size=${16} />` : html`<${Dots} ids=${evWhos(e)} />`}${e.time ? e.time + ' ' : ''}${e.title}</span>`; })}
+      ${chips.map(e => { const bn = binOf(e); return html`<span class="tchip" style=${binCss(bn)}>${bn ? html`<${Icon} n="bin" size=${16} />` : html`<${Dots} ids=${evWhos(e)} />`}${e.time && !evSpan(e) ? e.time + ' ' : ''}${specOf(e) ? specOf(e).emoji + ' ' : ''}${e.title}${evSpan(e) ? ' (bis ' + dm(fromIso(e.to)) + ')' : ''}</span>`; })}
       ${soonExams.map(x => html`<span class="tchip exam">${countdown(daysUntil(x.datum, now))}: ${x.fach} (${byId[x.kid] ? byId[x.kid].name : ''})</span>`)}
     </a>` : null}
     <${Todos} today=${today} onPress=${(e, t) => startPress(e, null, null, { label: t.title, icon: 'star', todo: t }, null, 'td')} skip=${skipClick} />
@@ -2363,9 +2381,9 @@ function Kalender({ now }){
             <span class="t"><span class="dot" style=${'background:' + mc(t.who)}></span>erledigt${t.slot ? ' ' + SLOTS[slotIdx(t.slot)].adv : ''} · ${byId[t.who].name}</span><span class="x">${t.label}</span></button>`)}
           ${bdays.filter(b => bdayOn(b, ds)).map(b => html`<button type="button" class="ev bdev" onClick=${() => setSheet({ kind:'bd' })}><span class="t"><${Icon} n="cake" size=${13} />Geburtstag</span><span class="x">${b.name}${b.year ? ' wird ' + bdayAge(b, ds) : ''}</span></button>`)}
           ${ex.map(x => html`<button type="button" class="ev exam" onClick=${() => { location.hash = 'schule'; }}><span class="t"><span class="dot" style=${'background:' + mc(x.kid)}></span>Schule</span><span class="x">Klassenarbeit ${x.fach} (${byId[x.kid] ? byId[x.kid].name : ''})</span></button>`)}
-          ${evs.map(e => { const ws = evWhos(e); const bn = binOf(e); return html`<button type="button" class=${'ev' + (bn ? ' binev' : '')} style=${bn ? binCss(bn) : 'background:' + (ws.length > 1 ? 'linear-gradient(90deg,' + ws.map(mt).join(',') + ')' : mt(ws[0]))} onClick=${() => setSheet({ kind:'detail', ev: e, ds })}>
-            <span class="t"><${Dots} ids=${ws} />${e.time ? e.time + (e.end ? '–' + e.end : '') : 'ganztags'}</span>
-            <span class="x">${e.title}${e.remind ? html`<span class="lockmini" title=${'Erinnerung: ' + remTxt(e)}><${Icon} n="bell" size=${13} /></span>` : null}${e.rep ? html`<span class="lockmini" title=${evRepTxt(e)}><${Icon} n="undo" size=${13} /></span>` : null}</span></button>`; })}
+          ${evs.map(e => { const ws = evWhos(e); const bn = binOf(e); const sp = specOf(e); return html`<button type="button" class=${'ev' + (bn ? ' binev' : '') + (sp ? ' specev' : '')} style=${bn ? binCss(bn) : 'background:' + (ws.length > 1 ? 'linear-gradient(90deg,' + ws.map(mt).join(',') + ')' : mt(ws[0]))} onClick=${() => setSheet({ kind:'detail', ev: e, ds })}>
+            <span class="t"><${Dots} ids=${ws} />${evSpan(e) ? evSpanTxt(e, ds) + (evDayNo(e, ds) === 1 && e.time ? ' · ab ' + e.time : '') : e.time ? e.time + (e.end ? '–' + e.end : '') : 'ganztags'}</span>
+            <span class="x">${sp ? sp.emoji + ' ' : ''}${e.title}${e.remind ? html`<span class="lockmini" title=${'Erinnerung: ' + remTxt(e)}><${Icon} n="bell" size=${13} /></span>` : null}${e.rep ? html`<span class="lockmini" title=${evRepTxt(e)}><${Icon} n="undo" size=${13} /></span>` : null}</span></button>`; })}
           <button type="button" class="addday" onClick=${() => setSheet({ kind:'add', date: ds })} aria-label=${'Termin am ' + dm(d) + ' hinzufügen'}>+ Termin</button>
         </section>`; })}
     </div>`}
@@ -2412,7 +2430,7 @@ function ReminderHost(){
   useEffect(() => { const chk = () => { if (!mem_ || DEMO && !window.__remDemo) return; const now = Date.now(); const today = iso(new Date()); const tm = iso(addDays(new Date(), 1));
       const F = remFired(); const out = [];
       Object.keys(mem_.docs).filter(k => k.indexOf('events/') === 0).forEach(k => { const e = Object.assign({ id: k.slice(7) }, mem_.docs[k]); if (!e.remind || !remForMe(e)) return;
-        [today, tm].forEach(ds => { if (!evOn(e, ds)) return; const at = remindAt(e, ds); if (!at) return; const key = e.id + '@' + ds;
+        [today, tm].forEach(ds => { if (!evStart(e, ds)) return; const at = remindAt(e, ds); if (!at) return; const key = e.id + '@' + ds;
           const v = F[key]; if (v && !v.s) return;
           const t = v && v.s ? v.s : at.getTime(); if (t <= now && now - t < 3 * 3600e3) out.push({ key, e, ds }); }); });
       setDue(d => { const neu = out.filter(x => !d.some(y => y.key === x.key)); if (!neu.length) return d;
@@ -2453,7 +2471,7 @@ function EventForm({ date, onClose, kind0, fixed, init }){
     const rk = f.evrep || ''; const recur = rk ? (rk[0] === 'w' ? { rep: 'w', every: +rk.slice(1) } : { rep: rk }) : {};
     const ws = f.whos && f.whos.length && f.whos[0] !== 'familie' ? f.whos : null;
     const rem = f.remind && (f.time ? REM_TIMED : REM_ALLDAY).some(r => r[0] === f.remind) ? f.remind : null;
-    S.add('events', Object.assign({ title: f.title.trim(), date: f.date, time: f.time || null, end: f.end || null, who: ws ? ws[0] : 'familie', source:'hand' }, rem ? { remind: rem } : {}, ws && ws.length > 1 ? { whos: ws } : {}, recur, rk && f.until ? { until: f.until } : {}));
+    S.add('events', Object.assign({ title: f.title.trim(), date: f.date, time: f.time || null, end: f.end || null, who: ws ? ws[0] : 'familie', source:'hand' }, f.to && f.to > f.date ? { to: f.to } : {}, rem ? { remind: rem } : {}, ws && ws.length > 1 ? { whos: ws } : {}, recur, rk && f.until ? { until: f.until } : {}));
     onClose(); toast(rk ? 'Termin gespeichert · ' + (EV_REPS.find(r => r[0] === rk) || ['', ''])[1] : 'Termin gespeichert'); };
   return html`<${Sheet} title=${todo ? 'Neue Aufgabe für alle' : 'Neuer Termin'} onClose=${onClose}>
     <form class=${fixed ? "" : "evform"} style="display:flex;flex-direction:column;gap:12px" onSubmit=${save}>
@@ -2470,6 +2488,11 @@ function EventForm({ date, onClose, kind0, fixed, init }){
         ${todo ? null : html`<${TimeField} id="ev-time" label="Von (leer = ganztags)" value=${f.time} onChange=${v => up('time', v)} style="flex:1 1 120px" />
         <${TimeField} id="ev-end" label="Bis" value=${f.end} onChange=${v => up('end', v)} style="flex:1 1 120px" />`}
       </div>
+      ${todo ? null : html`<div class="field">Mehrere Tage? <span class="sub" style="font-size:13px;font-weight:600">(z. B. Urlaub, Klassenfahrt)</span><div class="row" style="gap:6px">
+          <button type="button" class="chip" aria-pressed=${!f.to} onClick=${() => up('to', '')}>Nur ein Tag</button>
+          <button type="button" class="chip" aria-pressed=${!!f.to} onClick=${() => up('to', f.to || iso(addDays(fromIso(f.date), 6)))}>Mehrere Tage</button></div></div>
+        ${f.to ? html`<${DateField} label="Bis einschließlich" value=${f.to < f.date ? f.date : f.to} onChange=${v => up('to', v)} />
+          <div class="sub" style="font-size:13px;font-weight:600">${f.to > f.date ? (Math.round((fromIso(f.to) - fromIso(f.date)) / 864e5) + 1) + ' Tage – erscheint an jedem Tag im Kalender' : 'Der letzte Tag muss nach dem ersten liegen'}</div>` : null}`}
       <div key=${kind} style="display:flex;flex-direction:column;gap:12px">${todo ? html`<div class="field">Wiederholen?<div class="row" style="gap:6px">${REPEATS.map(r => html`<button type="button" class="chip" aria-pressed=${f.repeat === r[0]} onClick=${() => up('repeat', r[0])}>${r[1]}${r[0] === 'weekly' ? ' (' + WD[fromIso(f.date).getDay()] + ')' : ''}</button>`)}</div></div>
         ${todo && f.repeat === 'interval' ? html`<div class="field">Wie oft? (zählt ab dem letzten Erledigen)<div class="row" style="gap:6px">${EVERY.map(n => html`<button type="button" class="chip" aria-pressed=${(f.every || 4) === n} onClick=${() => up('every', n)}>${everyTxt(n)}</button>`)}</div></div>` : null}
         ${f.repeat === 'interval' ? null : html`<div class="field">Wann am Tag? (mehrere antippen möglich)<div class="row" style="gap:6px">
@@ -2487,17 +2510,53 @@ function EventForm({ date, onClose, kind0, fixed, init }){
     </form>
   <//>`;
 }
+/* ---------- Besondere Tage (Hochzeitstag, Jahrestag, Muttertag …) – mit etwas Liebe ---------- */
+const WED_NAMES = { 1:'Papierhochzeit', 2:'Baumwollhochzeit', 3:'Lederhochzeit', 4:'Seidenhochzeit', 5:'Holzhochzeit', 6:'Zuckerhochzeit', 7:'Kupferhochzeit', 8:'Blechhochzeit', 9:'Keramikhochzeit', 10:'Rosenhochzeit',
+  11:'Stahlhochzeit', 12:'Nickelhochzeit', 13:'Veilchenhochzeit', 14:'Elfenbeinhochzeit', 15:'Kristallhochzeit', 20:'Porzellanhochzeit', 25:'Silberhochzeit', 30:'Perlenhochzeit', 35:'Leinwandhochzeit', 40:'Rubinhochzeit', 50:'Goldene Hochzeit', 60:'Diamantene Hochzeit' };
+const SPECIALS = [
+  { re: /hochzeitstag|hochzeits-tag|heiratstag/i, kind: 'wed', emoji: '💍', head: 'Heute ist euer Hochzeitstag!', tip: 'Idee für die Kinder: Malt den beiden ein Herz-Bild – oder stellt heute Abend eine Kerze auf den Tisch.' },
+  { re: /jahrestag|kennenlerntag|valentin/i, kind: 'love', emoji: '💕', head: 'Heute ist ein Tag für die Liebe!', tip: 'Kleine Idee: ein Zettel mit „Hab dich lieb“ unter das Kopfkissen.' },
+  { re: /muttertag/i, kind: 'mum', emoji: '🌷', head: 'Alles Liebe zum Muttertag!', tip: 'Idee: Frühstück ans Bett oder ein selbstgemaltes Bild für Mama.' },
+  { re: /vatertag/i, kind: 'dad', emoji: '🍀', head: 'Alles Gute zum Vatertag!', tip: 'Idee: Papa darf heute das Abendessen aussuchen.' }];
+const specOf = e => { const t = (e && e.title) || ''; return SPECIALS.find(s => s.re.test(t)) || null; };
+/* Wie viele Jahre? Nur bei jährlichen Terminen, die in einem früheren Jahr begonnen haben */
+const specYears = (e, ds) => { if (e.rep !== 'y') return 0; const n = +ds.slice(0, 4) - +e.date.slice(0, 4); return n > 0 ? n : 0; };
+const specLine = (e, ds) => { const s = specOf(e); if (!s) return ''; const n = specYears(e, ds);
+  if (s.kind === 'wed' && n) return n + (n === 1 ? ' Jahr' : ' Jahre') + ' verheiratet' + (WED_NAMES[n] ? ' – ' + WED_NAMES[n] : '') + ' 🥂';
+  if (s.kind === 'love' && n) return n + (n === 1 ? ' Jahr' : ' Jahre') + ' zusammen 💞';
+  return ''; };
+function LoveHint({ e, ds }){
+  const s = specOf(e); const line = specLine(e, ds);
+  return html`<div class="hint lovehint" role="status">
+    <span class="lovefloat" aria-hidden="true"><i>❤</i><i>❤</i><i>❤</i><i>❤</i><i>❤</i><i>❤</i></span>
+    <span class="loveemo" aria-hidden="true">${s.emoji}</span>
+    <span style="position:relative"><b style="font-size:18px">${s.head}</b>${e.title && !s.re.test(s.head) ? html` <span class="sub">(${e.title})</span>` : null}
+      ${line ? html`<span style="display:block;font-weight:800;margin-top:2px">${line}</span>` : null}
+      <span style="display:block;font-size:14px;margin-top:4px;opacity:.85">${s.tip}</span></span></div>`;
+}
+/* Einmal pro Tag und Gerät: ein kurzer Herzregen beim ersten Öffnen */
+function HeartRain({ day }){
+  const [on, setOn] = useState(() => { try { if (lsGet('fb-love') === day) return false; lsSet('fb-love', day); } catch (e) {} return !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); });
+  useEffect(() => { if (!on) return; const t = setTimeout(() => setOn(false), 7000); return () => clearTimeout(t); }, [on]);
+  if (!on) return null;
+  return html`<div class="heartrain" aria-hidden="true">${Array.from({ length: 26 }, (x, i) => html`<i style=${'left:' + ((i * 37) % 100) + '%;animation-delay:' + ((i * 0.23) % 3).toFixed(2) + 's;font-size:' + (18 + (i * 7) % 26) + 'px;color:' + ['#ff4d6d', '#ff8fab', '#e63946', '#ffb3c6', '#c9184a'][i % 5]}>❤</i>`)}</div>`;
+}
 function EventDetail({ ev, ds, onClose }){
   const [confirm, setConfirm] = useState(false);
   const day = ds || ev.date;
   const rec = !!ev.rep;
   const skipOne = () => { const b = Object.assign({}, mem_.docs['events/' + ev.id] || ev); delete b.id; b.skip = (b.skip || []).concat([day]); S.set('events/' + ev.id, b); toast('Nur dieser Termin wurde gelöscht'); onClose(); };
   const endHere = () => { const b = Object.assign({}, mem_.docs['events/' + ev.id] || ev); delete b.id; b.until = iso(addDays(fromIso(day), -1)); if (b.until < b.date) { S.del('events/' + ev.id); } else S.set('events/' + ev.id, b); toast('Ab hier wiederholt sich der Termin nicht mehr'); onClose(); };
-  return html`<${Sheet} title=${ev.title} onClose=${onClose}>
+  const setTo = v => { const b = Object.assign({}, mem_.docs['events/' + ev.id] || ev); delete b.id; if (v && v > b.date) b.to = v; else delete b.to; S.set('events/' + ev.id, b); ev.to = b.to; toast(b.to ? 'Geht jetzt bis ' + dm(fromIso(b.to)) : 'Jetzt nur ein Tag'); };
+  return html`<${Sheet} title=${(specOf(ev) ? specOf(ev).emoji + ' ' : '') + ev.title} onClose=${onClose}>
     <div class="row"><span class="avstack">${evWhos(ev).map(id => html`<${Avatar} id=${id} size=${40} />`)}</span><div><b>${fromIso(day).toLocaleDateString('de-DE', { weekday:'long', day:'numeric', month:'long', year:'numeric' })}</b>
       <div class="sub" style="font-size:14px">${ev.time ? ev.time + (ev.end ? ' – ' + ev.end : '') + ' Uhr' : 'ganztags'} · ${evNames(ev)}</div>
+      ${evSpan(ev) ? html`<div class="sub" style="font-size:14px">${evSpanTxt(ev, day)} · ${dm(fromIso(ev.date))} bis ${dm(fromIso(ev.to))}</div>` : null}
+      ${specLine(ev, day) ? html`<div style="font-weight:800;margin-top:2px">${specLine(ev, day)}</div>` : null}
       ${rec ? html`<div class="sub" style="font-size:14px;display:flex;align-items:center;gap:4px"><${Icon} n="undo" size=${14} />${evRepTxt(ev)} seit ${dm(fromIso(ev.date))}${ev.until ? ' bis ' + dm(fromIso(ev.until)) : ''}</div>` : null}</div></div>
     ${ev.note ? html`<div>${ev.note}</div>` : null}
+    ${rec ? null : html`<div class="field">Bis wann?<div class="row" style="gap:6px"><button type="button" class="chip" aria-pressed=${!evSpan(ev)} onClick=${() => setTo('')}>Nur ein Tag</button><button type="button" class="chip" aria-pressed=${!!evSpan(ev)} onClick=${() => setTo(ev.to && ev.to > ev.date ? ev.to : iso(addDays(fromIso(ev.date), 6)))}>Mehrere Tage</button></div></div>
+      ${evSpan(ev) ? html`<${DateField} label="Letzter Tag" value=${ev.to} onChange=${setTo} />` : null}`}
     <${RemindPicker} value=${ev.remind} timed=${!!ev.time} onChange=${v => { const b = Object.assign({}, mem_.docs['events/' + ev.id] || ev); delete b.id; if (v) b.remind = v; else delete b.remind; S.set('events/' + ev.id, b); ev.remind = v; toast(v ? 'Erinnerung: ' + remTxt(b) : 'Keine Erinnerung'); }} />
     ${confirm ? html`<div class="field">${rec ? 'Was soll gelöscht werden?' : 'Wirklich löschen?'}<div class="row">
         ${rec ? html`<button type="button" class="btn small" style="background:var(--danger);color:#fff" onClick=${skipOne}><${Icon} n="bin" size=${16} />Nur diesen Termin</button>
@@ -2518,8 +2577,8 @@ function EventImport({ now, onClose }){
     setBusy(true); setErr(''); setFound(null); setEd(null);
     const prompt = 'Heute ist ' + iso(now) + ' (' + WD[now.getDay()] + '). Das Bild ist ein Screenshot oder Foto mit Terminen (z. B. Elternbrief, Einladung, Vereinsplan, Kalender, Nachricht). ' +
       'Familie: ' + MEMBERS.map(m => m.name + (m.role || m.school ? ' (' + [m.role, m.school ? 'Schule' : ''].filter(Boolean).join(', ') + ')' : '')).join(', ') + '. Lies alle Termine aus. ' +
-      'Antworte nur mit JSON: {"events":[{"title":string,"date":"YYYY-MM-DD","time":"HH:MM" oder null,"end":"HH:MM" oder null,"who":' + MEMBERS.map(m => '"' + m.id + '"').join('|') + '|"familie","exam":boolean,"fach":string oder null,"note":string oder null}]}. ' +
-      'Regeln: Fehlt das Jahr, nimm das nächste Datum ab heute. "who" nur setzen, wenn eindeutig eine Person gemeint ist, sonst "familie". exam=true nur bei Klassenarbeit/Probe/Test/Schulaufgabe eines Kindes, dann "fach" = Schulfach. Titel kurz auf Deutsch. Keine Termine erfinden; wenn keine da sind: {"events":[]}.';
+      'Antworte nur mit JSON: {"events":[{"title":string,"date":"YYYY-MM-DD","to":"YYYY-MM-DD" oder null,"time":"HH:MM" oder null,"end":"HH:MM" oder null,"who":' + MEMBERS.map(m => '"' + m.id + '"').join('|') + '|"familie","exam":boolean,"fach":string oder null,"note":string oder null}]}. ' +
+      'Regeln: Fehlt das Jahr, nimm das nächste Datum ab heute. Geht ein Termin über mehrere Tage (z. B. Ferien, Urlaub, Klassenfahrt), ist "date" der erste und "to" der letzte Tag, sonst "to": null. "who" nur setzen, wenn eindeutig eine Person gemeint ist, sonst "familie". exam=true nur bei Klassenarbeit/Probe/Test/Schulaufgabe eines Kindes, dann "fach" = Schulfach. Titel kurz auf Deutsch. Keine Termine erfinden; wenn keine da sind: {"events":[]}.';
     try {
       const res = await readImage(file, prompt);
       const list = (res && Array.isArray(res.events) ? res.events : []).filter(e => e && e.title && /^\d{4}-\d{2}-\d{2}$/.test(e.date || ''))
@@ -2535,7 +2594,7 @@ function EventImport({ now, onClose }){
     let n = 0;
     found.forEach((e,i) => { if (!pick[i]) return; n++;
       if (e.exam && byId[e.who] && byId[e.who].school) S.add('exams', { kid: e.who, fach: e.fach || e.title, datum: e.date, thema: e.note || '' });
-      else S.add('events', { title: e.title, date: e.date, time: e.time || null, end: e.end || null, who: e.who, note: e.note || null, source:'screenshot' });
+      else S.add('events', Object.assign({ title: e.title, date: e.date, time: e.time || null, end: e.end || null, who: e.who, note: e.note || null, source:'screenshot' }, e.to && /^\d{4}-\d{2}-\d{2}$/.test(e.to) && e.to > e.date ? { to: e.to } : {}));
     });
     toast(n + (n === 1 ? ' Termin' : ' Termine') + ' gespeichert'); onClose();
   };
@@ -2548,12 +2607,14 @@ function EventImport({ now, onClose }){
       ${found.map((e,i) => html`<div style="display:flex;flex-direction:column;gap:8px">
         <div style="display:flex;align-items:center;gap:8px"><label class="check" style="flex:1;min-width:0"><input type="checkbox" checked=${!!pick[i]} onChange=${ev => setPick(Object.assign({}, pick, { [i]: ev.target.checked }))} />
           <span style="flex:1;min-width:0"><span style="display:block;font-size:16px;font-weight:800">${e.exam ? 'Klassenarbeit: ' : ''}${e.exam ? (e.fach || e.title) : e.title}</span>
-          <span class="sub" style="font-size:14px">${fromIso(e.date).toLocaleDateString('de-DE', { weekday:'short', day:'numeric', month:'long' })}${e.time ? ', ' + e.time + (e.end ? '–' + e.end : '') + ' Uhr' : ', ganztags'} · ${byId[e.who] ? byId[e.who].name : 'Familie'}${e.note ? ' · ' + e.note : ''}</span></span>
+          <span class="sub" style="font-size:14px">${fromIso(e.date).toLocaleDateString('de-DE', { weekday:'short', day:'numeric', month:'long' })}${e.to && e.to > e.date ? ' bis ' + fromIso(e.to).toLocaleDateString('de-DE', { weekday:'short', day:'numeric', month:'long' }) : ''}${e.time ? ', ' + e.time + (e.end ? '–' + e.end : '') + ' Uhr' : e.to ? '' : ', ganztags'} · ${byId[e.who] ? byId[e.who].name : 'Familie'}${e.note ? ' · ' + e.note : ''}</span></span>
           <${Avatar} id=${e.who} size=${32} /></label>
           <button type="button" class="btn small ghost" aria-pressed=${ed === i} aria-label=${'„' + e.title + '“ ändern'} onClick=${() => setEd(ed === i ? null : i)}><${Icon} n="edit" size=${18} />${ed === i ? 'Fertig' : ''}</button></div>
         ${ed === i ? html`<div class="card" style="gap:10px;padding:12px;background:var(--surface-2)">
           <label class="field">Was?<input value=${e.title} onInput=${ev => upd(i, { title: ev.target.value })} /></label>
-          <${DateField} label="Datum" value=${e.date} onChange=${v => upd(i, { date: v })} />
+          <${DateField} label=${e.to ? 'Von' : 'Datum'} value=${e.date} onChange=${v => upd(i, { date: v })} />
+          <div class="row" style="gap:6px"><button type="button" class="chip" aria-pressed=${!e.to} onClick=${() => upd(i, { to: null })}>Ein Tag</button><button type="button" class="chip" aria-pressed=${!!e.to} onClick=${() => upd(i, { to: e.to || iso(addDays(fromIso(e.date), 6)) })}>Mehrere Tage</button></div>
+          ${e.to ? html`<${DateField} label="Bis einschließlich" value=${e.to} onChange=${v => upd(i, { to: v })} />` : null}
           <div class="row"><label class="field" style="flex:1 1 120px">Beginn (leer = ganztags)<input value=${e.time || ''} placeholder="z. B. 15:30" inputmode="numeric" onInput=${ev => upd(i, { time: ev.target.value.trim() || null })} /></label>
             <label class="field" style="flex:1 1 120px">Ende<input value=${e.end || ''} placeholder="z. B. 17:00" inputmode="numeric" onInput=${ev => upd(i, { end: ev.target.value.trim() || null })} /></label></div>
           <div class="field">Für wen?<div class="row" style="gap:8px">${['familie'].concat(MEMBERS.map(m => m.id)).map(w => html`<button type="button" class="chip" aria-pressed=${e.who === w} onClick=${() => upd(i, { who: w, exam: e.exam && byId[w] && byId[w].school ? e.exam : false })}>${w === 'familie' ? 'Familie' : byId[w].name}</button>`)}</div></div>
@@ -2574,7 +2635,8 @@ function Schule({ now }){
   const kid = SCHOOL.some(m => m.id === kid0) ? kid0 : (SCHOOL[0] ? SCHOOL[0].id : '');
   const tt = useDoc('timetables/' + (kid || '_keins'));
   const exams = useCol('exams');
-  const [sheet, setSheet] = useState(null);
+  const [sheet, setSheet] = useState(null); const [wipe, setWipe] = useState(false);
+  useEffect(() => { if (!wipe) return; const t = setTimeout(() => setWipe(false), 5000); return () => clearTimeout(t); }, [wipe]);
   const mon = monday(now);
   const days = [0,1,2,3,4].map(i => addDays(mon, i));
   const today = iso(now);
@@ -2628,6 +2690,7 @@ function Schule({ now }){
               <div class="row">
                 <button type="button" class="btn small ghost" onClick=${() => S.set('timetables/' + kid, Object.assign({}, tt, { times: tt.times.concat(['']), days: tt.days.map(d => (d || []).concat([null])) }))}>+ Stunde</button>
                 <button type="button" class="btn small soft" onClick=${() => setSheet({ kind:'shot' })}><${Icon} n="camera" size=${18} />Neu einlesen</button>
+                <button type="button" class="btn small ghost" style=${wipe ? 'background:var(--danger);color:#fff;border-color:var(--danger)' : 'color:var(--danger)'} onClick=${() => { if (!wipe) { setWipe(true); return; } setWipe(false); S.del('timetables/' + kid); toast('Stundenplan von ' + byId[kid].name + ' gelöscht – mit „Rückgängig“ oben zurückholbar'); }}><${Icon} n="bin" size=${18} />${wipe ? 'Wirklich ganzen Plan löschen?' : 'Plan löschen'}</button>
               </div>
             </div>
           </div>`}
@@ -3802,7 +3865,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '84';
+const APP_VER = '85';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
