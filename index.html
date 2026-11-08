@@ -106,6 +106,10 @@ h1,h2,h3{margin:0;text-wrap:balance}
 .field input,.field select,.input{height:48px;border:2px solid var(--line);border-radius:14px;padding:0 14px;font-size:16px;font-weight:700;color:var(--fg);background:var(--surface);box-sizing:border-box;width:100%;min-width:0}
 .avatar{border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;box-sizing:border-box}
 .avatar-btn{width:52px;height:52px;font-size:19px;border:3px solid transparent;padding:0}
+/* Name unter jedem Personen-Knopf, damit man ohne Kürzel-Kenntnis weiß, wer gemeint ist */
+.avatar-btn[title]:not(.nolbl){position:relative;margin-bottom:20px}
+.avatar-btn[title]:not(.nolbl)::after{content:attr(title);position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:800;line-height:1.1;color:var(--fg);pointer-events:none}
+.avatar-btn[title][aria-pressed="false"]:not(.nolbl)::after{color:var(--muted);font-weight:700}
 .famring{width:100%;height:100%;border-radius:50%;padding:4px;box-sizing:border-box;display:flex}.faminner{flex:1;border-radius:50%;background:var(--surface);color:var(--fg);display:flex;align-items:center;justify-content:center}.faminner svg{width:58%;height:58%}
 .empty{border:2px dashed var(--line);border-radius:20px;padding:24px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;color:var(--muted);font-weight:700}
 .empty strong{color:var(--fg);font-size:17px}
@@ -1610,12 +1614,13 @@ function Todos({ today, onPress, skip }){
         <button type="button" class="btn small ghost" onClick=${() => setAdd('event')}><${Icon} n="plus" size=${18} />Termin</button>
         <button type="button" class="btn small ghost" onClick=${() => setAdd('todo')}><${Icon} n="plus" size=${18} />Aufgabe für alle</button></div></div>
     ${list.length ? html`<div class="todolist">${list.map(t => { const ws = whoOf(t, today); const who = ws[0];
-      return html`<button type="button" class=${'todo' + (who ? ' done' : '')} onPointerDown=${e => onPress && onPress(e, t)} onContextMenu=${e => e.preventDefault()} onClick=${() => { if (skip && skip.current) return; setSel(t); }} style=${who ? 'background:' + mt(who) + ';border-color:' + mc(who) : ''}
+      const spk = t.speak && canSpeak ? html`<button type="button" class="iconbtn spk" style="align-self:center" aria-label=${'Vorlesen: ' + t.title} onClick=${() => sayIt(t.title)}><${Icon} n="speaker" size=${20} /></button>` : null;
+      return html`<span style="display:inline-flex;gap:6px;align-items:stretch;max-width:100%"><button type="button" class=${'todo' + (who ? ' done' : '')} onPointerDown=${e => onPress && onPress(e, t)} onContextMenu=${e => e.preventDefault()} onClick=${() => { if (skip && skip.current) return; setSel(t); }} style=${who ? 'background:' + mt(who) + ';border-color:' + mc(who) : ''}
         aria-label=${t.title + (who ? ', erledigt von ' + names(ws) : ', offen')}>
         ${who ? html`<span style="display:flex">${ws.map((w, i) => html`<span style=${i ? 'margin-left:-12px' : ''}><${Avatar} id=${w} size=${36} ring=${true} /></span>`)}</span>` : html`<span class="tb"></span>`}
         <span style="display:flex;flex-direction:column;gap:2px"><span>${t.title}${t.lockedBy && byId[t.lockedBy] ? html`<span class="lockmini" title=${'reserviert für ' + byId[t.lockedBy].name}><${Icon} n="lock" size=${14} /></span>` : null}</span>
           <span class="ts">${who ? 'erledigt von ' + names(ws) : t.lockedBy && byId[t.lockedBy] ? 'reserviert für ' + byId[t.lockedBy].name + ' · ' : ''}${who ? '' : Array.from({ length: t.stars || 1 }, () => html`<${Star} size=${14} />`)}${t.repeat === 'weekly' ? ' · jede Woche' : t.repeat === 'daily' ? ' · jeden Tag' : t.repeat === 'interval' ? ' · ' + everyTxt(t.every || 4) : ''}${t.slot ? ' · ' + SLOTS[slotIdx(t.slot)].adv : ''}</span></span>
-      </button>`; })}</div>` : html`<div class="sub" style="font-size:14px">Gerade nichts offen.</div>`}
+      </button>${spk}</span>`; })}</div>` : html`<div class="sub" style="font-size:14px">Gerade nichts offen.</div>`}
   </section>
   ${sel ? html`<${TodoClaim} t=${sel} ds=${today} onClose=${() => setSel(null)} />` : null}
   ${add ? html`<${EventForm} date=${today} kind0=${add} fixed=${true} onClose=${() => setAdd(false)} />` : null}
@@ -2075,7 +2080,7 @@ function GroupEdit({ grp, onDone }){
   const [every, setEvery] = useState(grp.every || 4); const [date, setDate] = useState(grp.date || iso(new Date()));
   const [repeat, setRepeat] = useState(grp.repeat || 'none'); const [stars, setStars] = useState(grp.stars || 1);
   const [pmds, setPmds] = useState(pt && !grp.every ? Array.from(new Set(grp.entries.map(t => t.slot || 'tag'))) : []);
-  const [tslot, setTslot] = useState(td ? (grp.entries[0].slot || 'tag') : 'tag');
+  const [tslot, setTslot] = useState(td ? (grp.entries[0].slot || 'tag') : 'tag'); const [tspk, setTspk] = useState(td ? !!grp.entries[0].speak : false);
   const [conf, setConf] = useState(false);
   const flip = (L, set, v) => set(L.indexOf(v) >= 0 ? (L.length > 1 ? L.filter(x => x !== v) : L) : L.concat([v]));
   const wk = wdays.slice().sort().join('');
@@ -2098,7 +2103,7 @@ function GroupEdit({ grp, onDone }){
         const b = Object.assign({}, mem_.docs['ptasks/' + t.id] || t, { label: l, icon, g }); delete b.id; if (b.every) b.every = every; else { b.date = date; b.slot = md === 'tag' ? null : md; } S.set('ptasks/' + t.id, b); });
       whos.forEach(w => sl.forEach(md => { if (have[w + '|' + md]) return; S.add('ptasks', Object.assign({ who: w, label: l, icon, g, done: false }, base.every ? { every, date: iso(new Date()) } : { date, slot: md === 'tag' ? null : md }, base.lock ? { lock: true } : {})); })); }
     else { grp.entries.forEach(t => { const b = Object.assign({}, mem_.docs['todos/' + t.id] || t, { title: l, repeat, stars, g }); delete b.id; if (repeat === 'interval') b.every = every; else delete b.every;
-      if (tslot === 'tag') delete b.slot; else b.slot = tslot; S.set('todos/' + t.id, b); }); }
+      if (tslot === 'tag') delete b.slot; else b.slot = tslot; if (tspk) b.speak = true; else delete b.speak; S.set('todos/' + t.id, b); }); }
     toast('„' + l + '“ wurde geändert'); onDone(); };
   return html`<${Sheet} title=${'„' + grp.label + '“ ändern'} onClose=${onDone}>
     <form style="display:flex;flex-direction:column;gap:12px" onSubmit=${save}>
@@ -2114,7 +2119,8 @@ function GroupEdit({ grp, onDone }){
           <div class="wdrow">${[1,2,3,4,5,6,0].map(dd => html`<button type="button" class="chip" style="min-width:0" aria-pressed=${wdays.indexOf(dd) >= 0 && wdays.length < 7} onClick=${() => setWdays(wdays.length === 7 ? [dd] : wdays.indexOf(dd) >= 0 ? (wdays.length > 1 ? wdays.filter(x => x !== dd) : wdays) : wdays.concat([dd]))}>${WD[dd]}</button>`)}</div></div>
         <div class="field">Wann am Tag?<div class="row" style="gap:6px">${MDS().map(md => html`<button type="button" class="chip" aria-pressed=${mds.indexOf(md) >= 0} onClick=${() => md === 'tag' ? setMds(['tag']) : setMds(mds.indexOf(md) >= 0 ? (mds.filter(x => x !== md && x !== 'tag').length ? mds.filter(x => x !== md && x !== 'tag') : mds) : mds.filter(x => x !== 'tag').concat([md]))}>${mdName(md)}</button>`)}</div></div>` : null}
       ${pt && !grp.every ? html`<div class="field">Wann am Tag?<div class="row" style="gap:6px">${MDS().map(md => html`<button type="button" class="chip" aria-pressed=${pmds.indexOf(md) >= 0} onClick=${() => md === 'tag' ? setPmds(['tag']) : setPmds(pmds.indexOf(md) >= 0 ? (pmds.filter(x => x !== md && x !== 'tag').length ? pmds.filter(x => x !== md && x !== 'tag') : pmds) : pmds.filter(x => x !== 'tag').concat([md]))}>${mdName(md)}</button>`)}</div></div>` : null}
-      ${td ? html`<div class="field">Wann am Tag?<div class="row" style="gap:6px">${MDS().map(md => html`<button type="button" class="chip" aria-pressed=${tslot === md} onClick=${() => setTslot(md)}>${mdName(md)}</button>`)}</div></div>` : null}
+      ${td ? html`<div class="field">Wann am Tag?<div class="row" style="gap:6px">${MDS().map(md => html`<button type="button" class="chip" aria-pressed=${tslot === md} onClick=${() => setTslot(md)}>${mdName(md)}</button>`)}</div></div>
+        <label class="check"><input type="checkbox" checked=${tspk} onChange=${e => setTspk(e.target.checked)} /><span><b>Vorlese-Knopf</b><span class="sub" style="display:block;font-size:13px">Lautsprecher neben der Aufgabe, der sie vorliest</span></span></label>` : null}
       ${pt && grp.every || td && repeat === 'interval' ? html`<div class="field">Wie oft?<div class="row" style="gap:6px">${EVERY.map(n => html`<button type="button" class="chip" aria-pressed=${every === n} onClick=${() => setEvery(n)}>${everyTxt(n)}</button>`)}</div></div>` : null}
       ${pt && !grp.every ? html`<${DateField} label="An welchem Tag?" value=${date} onChange=${setDate} />` : null}
       ${td ? html`<div class="field">Wiederholen?<div class="row" style="gap:6px">${REPEATS.map(r => html`<button type="button" class="chip" aria-pressed=${repeat === r[0]} onClick=${() => setRepeat(r[0])}>${r[1]}</button>`)}</div></div>
@@ -2443,7 +2449,7 @@ function EventForm({ date, onClose, kind0, fixed, init }){
   const todo = kind === 'todo';
   const save = e => { e.preventDefault(); if (!f.title.trim() || !f.date) return;
     if (todo) { const sl = f.tslots && f.tslots.length ? f.tslots : [null]; const g = newG();
-      sl.forEach(x => S.add('todos', Object.assign({ title: f.title.trim(), date: f.date, repeat: f.repeat, stars: f.stars, done: {}, g }, f.repeat === 'interval' ? { every: f.every || 4 } : {}, x ? { slot: x } : {}))); onClose(); toast('Aufgabe für alle eingetragen'); return; }
+      sl.forEach(x => S.add('todos', Object.assign({ title: f.title.trim(), date: f.date, repeat: f.repeat, stars: f.stars, done: {}, g }, f.repeat === 'interval' ? { every: f.every || 4 } : {}, x ? { slot: x } : {}, f.speak ? { speak: true } : {}))); onClose(); toast('Aufgabe für alle eingetragen'); return; }
     const rk = f.evrep || ''; const recur = rk ? (rk[0] === 'w' ? { rep: 'w', every: +rk.slice(1) } : { rep: rk }) : {};
     const ws = f.whos && f.whos.length && f.whos[0] !== 'familie' ? f.whos : null;
     const rem = f.remind && (f.time ? REM_TIMED : REM_ALLDAY).some(r => r[0] === f.remind) ? f.remind : null;
@@ -2470,7 +2476,8 @@ function EventForm({ date, onClose, kind0, fixed, init }){
           <button type="button" class="chip" aria-pressed=${!(f.tslots && f.tslots.length)} onClick=${() => up('tslots', [])}>Ganztags</button>
           ${SLOTS.map(x => { const on = (f.tslots || []).indexOf(x.id) >= 0; return html`<button type="button" class="chip" aria-pressed=${on} onClick=${() => up('tslots', on ? (f.tslots || []).filter(y => y !== x.id) : (f.tslots || []).concat([x.id]))}>${x.adv[0].toUpperCase() + x.adv.slice(1)} (${x.from}${x.id === 'abend' ? '' : '–' + SLOTS[slotIdx(x.id) + 1].from} Uhr)</button>`; })}</div>
           ${f.tslots && f.tslots.length ? html`<div class="sub" style="font-size:13px;font-weight:600">Erscheint nur im gewählten Zeitraum. Danach fällt sie raus und kann nicht mehr nachträglich abgehakt werden.</div>` : null}</div>`}
-        <div class="field">Wie viele Sterne?<div class="row" style="gap:6px">${[1,2,3].map(n => html`<button type="button" class="chip" aria-pressed=${f.stars === n} onClick=${() => up('stars', n)} aria-label=${n + ' Sterne'}>${Array.from({ length: n }, () => html`<${Star} size=${16} />`)}</button>`)}</div></div>`
+        <div class="field">Wie viele Sterne?<div class="row" style="gap:6px">${[1,2,3].map(n => html`<button type="button" class="chip" aria-pressed=${f.stars === n} onClick=${() => up('stars', n)} aria-label=${n + ' Sterne'}>${Array.from({ length: n }, () => html`<${Star} size=${16} />`)}</button>`)}</div></div>
+        <label class="check"><input type="checkbox" checked=${!!f.speak} onChange=${e => up('speak', e.target.checked)} /><span><b>Vorlese-Knopf</b><span class="sub" style="display:block;font-size:13px">Ein Lautsprecher neben der Aufgabe liest sie vor – für Kinder, die noch nicht lesen können.</span></span></label>`
       : html`<div class="field">Wiederholen?<div class="row" style="gap:6px">${EV_REPS.map(r => html`<button type="button" class="chip" aria-pressed=${(f.evrep || '') === r[0]} onClick=${() => up('evrep', r[0])}>${r[1]}</button>`)}</div></div>
         ${f.evrep ? html`<div class="field">Bis wann? <div class="row" style="gap:6px"><button type="button" class="chip" aria-pressed=${!f.until} onClick=${() => up('until', '')}>Ohne Ende</button><button type="button" class="chip" aria-pressed=${!!f.until} onClick=${() => up('until', f.until || iso(addDays(fromIso(f.date), 90)))}>Enddatum wählen</button></div></div>
           ${f.until ? html`<${DateField} label="Letzter Termin" value=${f.until} onChange=${v => up('until', v)} />` : null}` : null}
@@ -3671,7 +3678,7 @@ function MemberForm({ m, list, onDone }){
         <label class="check"><input type="checkbox" checked=${!!f.speak} onChange=${e => up('speak', e.target.checked)} /><span><b>Vorlese-Knopf</b><span class="sub" style="display:block;font-size:13px">Für Kinder, die noch nicht lesen: Aufgaben werden vorgelesen.</span></span></label>`
       : html`<div class="field">Bezeichnung (optional)<div class="row" style="gap:6px">${ROLE_SUG.map(r => html`<button type="button" class="chip" aria-pressed=${f.role === r} onClick=${() => up('role', f.role === r ? '' : r)}>${r}</button>`)}</div>
         <input id="mf-role" value=${f.role} onInput=${e => up('role', e.target.value)} placeholder="oder selbst eintippen" /></div>`}
-      <div class="field">Kürzel<div class="row" style="gap:8px">${shortSug(f.name).map(v => { const t = takenShort(v); return html`<button type="button" class="avatar avatar-btn" disabled=${t} aria-pressed=${short === v} aria-label=${'Kürzel ' + v + (t ? ' (schon vergeben)' : '')} title=${t ? 'schon vergeben' : v}
+      <div class="field">Kürzel<div class="row" style="gap:8px">${shortSug(f.name).map(v => { const t = takenShort(v); return html`<button type="button" class="avatar avatar-btn nolbl" disabled=${t} aria-pressed=${short === v} aria-label=${'Kürzel ' + v + (t ? ' (schon vergeben)' : '')} title=${t ? 'schon vergeben' : v}
           style=${'background:var(--pt-' + f.color + ');color:var(--pm-' + f.color + ');border-color:' + (short === v ? 'var(--pm-' + f.color + ')' : 'transparent') + (t ? ';opacity:.3' : '')} onClick=${() => up('short', f.short === v ? '' : v)}>${v}</button>`; })}</div>
         ${takenShort(short) ? html`<span class="sub" style="font-size:13px;color:var(--warn-ink)">Dieses Kürzel hat schon jemand – besser ein anderes wählen.</span>` : null}</div>
       <div class="field">Farbe<div class="row" style="gap:8px">${PALETTE.map(p => html`<${Swatch} k=${p[0]} on=${f.color === p[0]} taken=${others.some(o => o.color === p[0])} onClick=${() => up('color', p[0])} />`)}</div></div>
@@ -3795,7 +3802,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '83';
+const APP_VER = '84';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
