@@ -2764,6 +2764,7 @@ function Schule({ now }){
               </div>
             </div>
           </div>`}
+        <${ExamForm} kid=${kid} subjects=${subjects} now=${now} />
       </div>
       <aside>
         <div class="card">
@@ -2777,7 +2778,6 @@ function Schule({ now }){
           </div>` : html`<div class="sub" style="font-size:15px">Keine anstehenden Klassenarbeiten.</div>`}
         </div>
         <${BusCard} tt=${tt} kid=${kid} now=${now} />
-        <${ExamForm} kid=${kid} subjects=${subjects} now=${now} />
       </aside>
     </div>
     ${sheet && sheet.kind === 'shot' ? html`<${TimetableImport} kid=${kid} onClose=${() => setSheet(null)} />` : null}
@@ -3989,7 +3989,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '90';
+const APP_VER = '91';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
