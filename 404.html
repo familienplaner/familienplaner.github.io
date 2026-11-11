@@ -1836,14 +1836,18 @@ function TodoClaim({ t, ds, onClose }){
       : html`<div class="field">Mit Schloss für jemanden reservieren (braucht eine PIN):<div class="row" style="gap:6px">${MEMBERS.filter(m => hasPin(m.id)).map(m => html`<button type="button" class="chip" onClick=${async () => { if (!(await needPin(m.id, '„' + t.title + '“ für ' + m.name + ' reservieren'))) return; const b = Object.assign({}, mem_.docs['todos/' + t.id] || {}, { lockedBy: m.id }); S.set('todos/' + t.id, b); toast('Reserviert für ' + m.name); onClose(); }}><${Icon} n="lock" size=${14} /> ${m.name}</button>`)}${MEMBERS.some(m => hasPin(m.id)) ? null : html`<span class="sub" style="font-size:13px">Noch niemand hat eine PIN. Auf „Heute“ auf einen Namen tippen, um sie festzulegen.</span>`}</div></div>`}
   <//>`;
 }
+/* Ampel-Einstellungen (Minuten und Texte), editierbar unter Schule → Bus zur Schule */
+const AMP_DEF = { show: 90, orange: 15, red: 5, green: 'Noch Zeit – in Ruhe fertig machen', orangeT: 'Schuhe und Jacke an!', redT: 'Jetzt los zum Bus!', redCar: 'Jetzt geht’s los!', gone: 'Der Bus ist abgefahren' };
+const ampCfg = cfg => { const a = Object.assign({}, AMP_DEF, (cfg && cfg.amp) || {}); ['show','orange','red'].forEach(k => { a[k] = Math.max(0, Math.min(240, +a[k] || 0)); }); return a; };
 function BusAmpel({ buses, allBuses, today }){
+  const amp = ampCfg(useDoc('config/bus'));
   const [t, setT] = useState(Date.now());
   useEffect(() => { const i = setInterval(() => setT(Date.now()), 1000); return () => clearInterval(i); }, []);
   const now = new Date(t); const nm = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
   const groups = {};
   buses.forEach(b => { const gk = b.dep + (b.car ? 'c' : 'b'); if (!groups[gk]) groups[gk] = Object.assign({ kids: [] }, b); groups[gk].kids.push(b.kid); });
   const noneKids = (allBuses || []).filter(b => b.none && b.skip).map(b => b.kid);
-  const list = Object.keys(groups).map(k => Object.assign(groups[k], { left: toMin(groups[k].dep) - nm })).filter(g => g.left > -10 && g.left <= 90).sort((a, b) => a.left - b.left);
+  const list = Object.keys(groups).map(k => Object.assign(groups[k], { left: toMin(groups[k].dep) - nm })).filter(g => g.left > -10 && g.left <= Math.max(amp.show, amp.orange, 1)).sort((a, b) => a.left - b.left);
   const showNone = noneKids.length && nm < 10 * 60;
   /* Anheften: Abstand nach oben = Navigation + Tageszeit-Leiste (falls sichtbar), "stuck" sobald sie oben klebt */
   const live = list.some(g => g.left > 0); const ref = useRef(null); const [stuck, setStuck] = useState(false);
@@ -1854,10 +1858,10 @@ function BusAmpel({ buses, allBuses, today }){
     return () => { clearTimeout(t); window.removeEventListener('scroll', calc); window.removeEventListener('resize', calc); }; }, [live]);
   if (!list.length && !showNone) return null;
   return html`<div ref=${ref} class=${'buses' + (live ? ' pin' : '') + (live && stuck ? ' stuck' : '')}>${list.map(g => {
-    const st = g.left <= 0 ? 'gone' : g.left < 5 ? 'red' : g.left < 15 ? 'orange' : 'green';
+    const st = g.left <= 0 ? 'gone' : g.left < amp.red ? 'red' : g.left < amp.orange ? 'orange' : 'green';
     const secs = Math.max(0, Math.ceil(g.left * 60));
-    const msg = g.car ? { green:'Noch Zeit – in Ruhe fertig machen', orange:'Schuhe und Jacke an!', red:'Jetzt geht’s los!', gone:'Losgefahren' }[st]
-      : { green:'Noch Zeit – in Ruhe fertig machen', orange:'Schuhe und Jacke an!', red:'Jetzt los zum Bus!', gone:'Der Bus ist abgefahren' }[st];
+    const msg = g.car ? { green: amp.green, orange: amp.orangeT, red: amp.redCar, gone:'Losgefahren' }[st]
+      : { green: amp.green, orange: amp.orangeT, red: amp.redT, gone: amp.gone }[st];
     const names = g.kids.map(k => byId[k].name).join(' & ');
     return html`<section class=${'bus ' + st} aria-label=${'Bus für ' + names + ' um ' + g.dep + ' Uhr: ' + msg}>
       <div class="lamp" aria-hidden="true"><i class="r"></i><i class="o"></i><i class="g"></i></div>
@@ -2770,11 +2774,17 @@ function BusCard({ tt, kid, now }){
   const up = (k, v) => setF(o => Object.assign({}, o, { [k]: v }));
   const save = () => {
     if (toMin(f.d1) == null || toMin(f.d2) == null) { toast('Bitte beide Abfahrtszeiten eintragen'); return; }
-    S.set('config/bus', { first:{ dep:f.d1, arr:f.a1, car:f.c1 || '', ignore:!!f.i1 }, second:{ dep:f.d2, arr:f.a2, note:f.n2.trim(), car:f.c2 || '', ignore:!!f.i2 } }); setF(null); toast('Busfahrzeiten gespeichert'); };
+    const sh = +f.as, og = +f.ao, rd = +f.ar;
+    if (!(sh >= 1 && sh <= 240) || !(og >= 0 && og <= 240) || !(rd >= 0 && rd <= 240)) { toast('Bitte bei der Ampel Minuten zwischen 0 und 240 eintragen'); return; }
+    if (rd > og) { toast('Rot muss kürzer vor der Abfahrt kommen als Gelb'); return; }
+    const tx = (v, k) => (v || '').trim() || AMP_DEF[k];
+    S.set('config/bus', { first:{ dep:f.d1, arr:f.a1, car:f.c1 || '', ignore:!!f.i1 }, second:{ dep:f.d2, arr:f.a2, note:f.n2.trim(), car:f.c2 || '', ignore:!!f.i2 },
+      amp:{ show: Math.max(sh, og), orange: og, red: rd, green: tx(f.tg, 'green'), orangeT: tx(f.to, 'orangeT'), redT: tx(f.tr, 'redT'), redCar: tx(f.tc, 'redCar'), gone: tx(f.tx, 'gone') } }); setF(null); toast('Bus und Ampel gespeichert'); };
+  const am = ampCfg(cfg);
   const z = t => { const n = toMin(t); return n == null ? '' : pad(Math.floor(n / 60)) + ':' + pad(n % 60); };
   return html`<div class="card">
     <div class="row" style="justify-content:space-between"><h2 style="font-size:20px;display:flex;align-items:center;gap:8px"><${Icon} n="bus" size=${22} />Bus zur Schule</h2>
-      ${f ? null : html`<button type="button" class="btn small ghost" onClick=${() => setF({ d1:z(c.first.dep), a1:z(c.first.arr), c1:z(c.first.car), i1:!!c.first.ignore, d2:z(c.second.dep), a2:z(c.second.arr), n2:c.second.note || '', c2:z(c.second.car), i2:!!c.second.ignore })}><${Icon} n="edit" size=${16} />Zeiten</button>`}</div>
+      ${f ? null : html`<button type="button" class="btn small ghost" onClick=${() => setF({ d1:z(c.first.dep), a1:z(c.first.arr), c1:z(c.first.car), i1:!!c.first.ignore, d2:z(c.second.dep), a2:z(c.second.arr), n2:c.second.note || '', c2:z(c.second.car), i2:!!c.second.ignore, as:String(am.show), ao:String(am.orange), ar:String(am.red), tg:am.green, to:am.orangeT, tr:am.redT, tc:am.redCar, tx:am.gone })}><${Icon} n="edit" size=${16} />Zeiten</button>`}</div>
     ${f ? html`<div class="row" style="align-items:flex-end"><b style="width:90px;font-size:14px;padding-bottom:14px">ab 1. Std.</b>
         <${TimeField} label="Abfahrt" value=${f.d1} onChange=${v => up('d1', v)} style="flex:1 1 90px" /><${TimeField} label="Ankunft" value=${f.a1} onChange=${v => up('a1', v)} style="flex:1 1 90px" /></div>
       <div class="row" style="align-items:flex-end"><b style="width:90px;font-size:14px;padding-bottom:14px">ab 2. Std.</b>
@@ -2788,13 +2798,19 @@ function BusCard({ tt, kid, now }){
       <div class="row" style="align-items:flex-end"><b style="width:90px;font-size:14px;padding-bottom:14px">ab 2. Std.</b>
         <${TimeField} label="Losgehen" value=${f.c2} onChange=${v => up('c2', v)} placeholder="z. B. 8:30" style="flex:1 1 120px" />
         <label class="check" style="display:flex;gap:8px;align-items:center;font-weight:800;font-size:13px;padding-bottom:12px"><input type="checkbox" checked=${f.i2} onChange=${e => up('i2', e.target.checked)} style="width:22px;height:22px" />Bus immer ignorieren</label></div>
+      <h3 style="font-size:15px;display:flex;align-items:center;gap:6px;margin-top:4px">🚦 Ampel auf „Heute“</h3>
+      <div class="sub" style="font-size:13px">Minuten vor der Abfahrt (bzw. vor dem Losgehen)</div>
+      <div class="row" style="gap:8px">
+        ${[['as', 'Countdown ab', '90'], ['ao', 'Gelb ab', '15'], ['ar', 'Rot ab', '5']].map(([k, l, ph]) => html`<label class="field" style="flex:1 1 90px;min-width:0">${l}<span style="display:flex;align-items:center;gap:6px"><input class="input" type="number" inputmode="numeric" min="0" max="240" style="height:44px;width:100%" placeholder=${ph} value=${f[k]} onInput=${e => up(k, e.target.value)} /><span class="sub" style="font-size:13px">Min.</span></span></label>`)}</div>
+      <div class="sub" style="font-size:13px">Texte (leer lassen = Standardtext)</div>
+      ${[['tg', '🟢 Grün', 'green'], ['to', '🟡 Gelb', 'orangeT'], ['tr', '🔴 Rot (mit Bus)', 'redT'], ['tc', '🔴 Rot (ohne Bus)', 'redCar'], ['tx', '⚪ Bus weg', 'gone']].map(([k, l, d]) => html`<label class="field">${l}<input class="input" style="height:44px" maxlength="60" placeholder=${AMP_DEF[d]} value=${f[k]} onInput=${e => up(k, e.target.value)} /></label>`)}
       <div class="row"><button type="button" class="btn small" onClick=${save}>Speichern</button><button type="button" class="btn small ghost" onClick=${() => setF(null)}>Abbrechen</button></div>` : html`
       <div class="list">${week.map(w => html`<div class="li">
         <b style="width:28px">${WD[w.d.getDay()]}</b>
         <div class="tx">${w.b ? html`<b>${w.b.car ? 'Ohne Bus, los um ' : ''}${w.b.dep} Uhr</b><span>Unterricht ab ${w.b.lesson}. Std.${w.b.note && !w.b.car ? ' · ' + w.b.note : ''}</span>` : html`<span>${w.none ? 'ohne Bus (keine Uhrzeit eingetragen)' : tt ? 'kein Unterricht eingetragen' : 'erst Stundenplan eintragen'}</span>`}</div>
       </div>`)}</div>
       <${FreeDays} />
-      <div class="sub" style="font-size:13px">Gilt für ${SCHOOL.map(m => m.name).join(' und ')}. In den hessischen Schulferien und an Feiertagen gibt es keinen Bus und keine Ampel. Der Bus ergibt sich aus der ersten Stunde im Stundenplan. Auf „Heute“ zeigt eine Ampel, wann es losgeht: grün = noch Zeit, orange ab 15 Min., rot ab 5 Min. Dort kann man den Bus auch nur für heute ignorieren.</div>`}
+      <div class="sub" style="font-size:13px">Gilt für ${SCHOOL.map(m => m.name).join(' und ')}. In den hessischen Schulferien und an Feiertagen gibt es keinen Bus und keine Ampel. Der Bus ergibt sich aus der ersten Stunde im Stundenplan. Auf „Heute“ zeigt eine Ampel, wann es losgeht: Countdown ab ${am.show} Min. vorher, grün = noch Zeit, gelb ab ${am.orange} Min., rot ab ${am.red} Min. (änderbar über „Zeiten“) Dort kann man den Bus auch nur für heute ignorieren.</div>`}
   </div>`;
 }
 function FerienCount({ now }){
@@ -3912,7 +3928,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '86';
+const APP_VER = '87';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
