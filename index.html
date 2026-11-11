@@ -530,6 +530,8 @@ button.lbs[aria-expanded="true"] .chev{transform:rotate(-90deg)}
 .cell.ghost .gs{font-size:11px;font-weight:600;line-height:1.1}
 .cell.ghost.pastcell{opacity:.35}
 .tt .tm.ghosttm{opacity:.6}
+.simbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:700;display:flex;align-items:center;gap:10px;flex-wrap:nowrap;white-space:nowrap;justify-content:center;max-width:calc(100vw - 24px);padding:8px 10px 8px 16px;border-radius:999px;background:#7c3aed;color:#fff;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.simbar .btn{background:#fff;color:#4c1d95;min-height:34px}
 /* Zeitspalte bleibt beim seitlichen Wischen stehen */
 .ovx .tt>div:first-child,.ovx .tt .tm{position:sticky;left:0;z-index:3;background:var(--surface)!important;box-shadow:8px 0 0 var(--surface)}
 .ovx .tt .tm.ghosttm{opacity:1;color:var(--muted)}
@@ -1372,8 +1374,8 @@ function useCol(p){
   return v;
 }
 function useNow(){
-  const [now, setNow] = useState(new Date());
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), 20000); return () => clearInterval(t); }, []);
+  const [now, setNow] = useState(nowD());
+  useEffect(() => { const t = setInterval(() => setNow(nowD()), 20000); const h = () => setNow(nowD()); window.addEventListener('fb-sim', h); return () => { clearInterval(t); window.removeEventListener('fb-sim', h); }; }, []);
   return now;
 }
 
@@ -1856,8 +1858,8 @@ const AMP_DEF = { show: 90, orange: 15, red: 5, green: 'Noch Zeit – in Ruhe fe
 const ampCfg = cfg => { const a = Object.assign({}, AMP_DEF, (cfg && cfg.amp) || {}); ['show','orange','red'].forEach(k => { a[k] = Math.max(0, Math.min(240, +a[k] || 0)); }); return a; };
 function BusAmpel({ buses, allBuses, today }){
   const amp = ampCfg(useDoc('config/bus'));
-  const [t, setT] = useState(Date.now());
-  useEffect(() => { const i = setInterval(() => setT(Date.now()), 1000); return () => clearInterval(i); }, []);
+  const [t, setT] = useState(nowD().getTime());
+  useEffect(() => { const i = setInterval(() => setT(nowD().getTime()), 1000); return () => clearInterval(i); }, []);
   const now = new Date(t); const nm = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
   const groups = {};
   buses.forEach(b => { const gk = b.dep + (b.car ? 'c' : 'b'); if (!groups[gk]) groups[gk] = Object.assign({ kids: [] }, b); groups[gk].kids.push(b.kid); });
@@ -2791,6 +2793,35 @@ function CarWay({ f, up, n, ph }){
       : m === 'school' ? html`<div class="row" style="gap:8px;align-items:flex-end">${num('cw' + n, 'Weg zur Schule')}<span class="sub" style="font-size:12px;flex:1 1 120px">Losgehen = Unterrichtsbeginn laut Stundenplan minus Wegzeit</span></div>`
       : html`<div class="row" style="gap:8px;align-items:flex-end"><${TimeField} label="Abfahrt Mitfahrgelegenheit" value=${f['r' + n]} onChange=${v => up('r' + n, v)} placeholder="z. B. 7:40" style="flex:1 1 130px" />${num('cw' + n, 'Weg zum Treffpunkt')}</div>`}</div>`;
 }
+/* ---------- Testzeit (nur Admin): verschobene Uhr, nur in diesem Browser-Tab ---------- */
+const simOff = () => { try { return +sessionStorage.getItem('fb-sim') || 0; } catch (e) { return 0; } };
+const setSim = ms => { try { if (ms) sessionStorage.setItem('fb-sim', String(Math.round(ms))); else sessionStorage.removeItem('fb-sim'); } catch (e) {} window.dispatchEvent(new Event('fb-sim')); };
+const nowD = () => new Date(Date.now() + simOff());
+let _admP = null;
+const appAdminP = () => { if (!_admP) _admP = (!sb || DEMO) ? Promise.resolve(false) : sb.rpc('is_app_admin').then(r => !!(r && r.data)).catch(() => false); return _admP; };
+function useAppAdmin(){ const [a, setA] = useState(false); useEffect(() => { let on = true; appAdminP().then(v => { if (on) setA(v); }); return () => { on = false; }; }, []); return a; }
+function SimBanner(){
+  const [, f] = useState(0); useEffect(() => { const h = () => f(x => x + 1); window.addEventListener('fb-sim', h); const i = setInterval(h, 1000); return () => { window.removeEventListener('fb-sim', h); clearInterval(i); }; }, []);
+  if (!simOff()) return null; const d = nowD();
+  return html`<div class="simbar" role="status"><span style="white-space:nowrap">🧪 Testzeit <b>${WD[d.getDay()]} ${dm(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}</b></span><button type="button" class="btn small" onClick=${() => { setSim(0); toast('Echte Uhrzeit wieder aktiv'); }}>Beenden</button></div>`;
+}
+function SimPanel({ cfg, tt }){
+  const adm = useAppAdmin(); const [open, setOpen] = useState(false); const [d, setD] = useState(() => iso(nowD())); const [t, setT] = useState('');
+  if (!adm) return null;
+  const go = (ds, mins) => { const x = fromIso(ds); x.setHours(0, 0, 0, 0); setSim(x.getTime() + mins * 60000 - Date.now()); location.hash = '#heute'; toast('Testzeit läuft – Ampel auf „Heute“'); };
+  const b = busFor(tt, fromIso(d), cfg); const dep = b && !b.none ? toMin(b.dep) : null; const amp = ampCfg(cfg);
+  return html`<div style="border-top:1px solid var(--line);padding-top:8px">
+    ${open ? html`<div style="display:flex;flex-direction:column;gap:8px">
+      <b style="font-size:15px">🧪 Ampel testen (nur Admin)</b>
+      <div class="sub" style="font-size:13px">Verschiebt die Uhr nur in diesem Browser-Tab. Alles andere läuft normal weiter – unten erscheint ein lila Hinweis mit „Beenden“. Abhaken etc. während der Testzeit zählt für den Testtag.</div>
+      <${DateField} label="Tag" value=${d} onChange=${setD} />
+      ${dep != null ? html`<div class="row" style="gap:6px">${[[amp.show + 1, 'kurz vor Countdown'], [amp.orange + 2, 'Grün'], [Math.max(amp.red + 1, Math.round((amp.orange + amp.red) / 2)), 'Gelb'], [Math.max(1, amp.red - 1) + 0.5, 'Rot'], [-1, 'abgefahren']].map(([m, l]) => html`<button type="button" class="chip" style="min-height:36px;font-size:13px" onClick=${() => go(d, dep - m)}>${l} (${hm2(Math.round(dep - m))})</button>`)}</div>`
+        : html`<div class="sub" style="font-size:13px">An diesem Tag gibt es keinen Bus/keine Ampel (Wochenende, Ferien oder kein Unterricht) – bitte einen Schultag wählen.</div>`}
+      <div class="row" style="gap:8px;align-items:flex-end"><${TimeField} label="Oder eigene Uhrzeit" value=${t} onChange=${setT} placeholder="z. B. 7:30" style="flex:1 1 120px" />
+        <button type="button" class="btn small" disabled=${toMin(t) == null} onClick=${() => go(d, toMin(t))}>Starten</button></div>
+      <div class="row">${simOff() ? html`<button type="button" class="btn small ghost" onClick=${() => { setSim(0); toast('Echte Uhrzeit wieder aktiv'); }}>Testzeit beenden</button>` : null}<button type="button" class="btn small ghost" onClick=${() => setOpen(false)}>Schließen</button></div></div>`
+    : html`<button type="button" class="btn small ghost" onClick=${() => setOpen(true)}>🧪 Ampel testen (Admin)</button>`}</div>`;
+}
 function BusCard({ tt, kid, now }){
   const cfg = useDoc('config/bus');
   const c = busCfg(cfg);
@@ -2838,6 +2869,7 @@ function BusCard({ tt, kid, now }){
         <div class="tx">${w.b ? html`<b>${w.b.car ? 'Ohne Bus, los um ' : w.b.bus ? 'Los ' : ''}${w.b.dep} Uhr${w.b.bus ? ' · Bus ' + w.b.bus : ''}</b><span>Unterricht ab ${w.b.lesson}. Std.${w.b.note && !w.b.car ? ' · ' + w.b.note : ''}</span>` : html`<span>${w.none ? 'ohne Bus (keine Uhrzeit eingetragen)' : tt ? 'kein Unterricht eingetragen' : 'erst Stundenplan eintragen'}</span>`}</div>
       </div>`)}</div>
       <${FreeDays} />
+      <${SimPanel} cfg=${cfg} tt=${tt} />
       <div class="sub" style="font-size:13px">Gilt für ${SCHOOL.map(m => m.name).join(' und ')}. In den hessischen Schulferien und an Feiertagen gibt es keinen Bus und keine Ampel. Der Bus ergibt sich aus der ersten Stunde im Stundenplan. Auf „Heute“ zeigt eine Ampel, wann es losgeht: Countdown ab ${am.show} Min. vorher, grün = noch Zeit, gelb ab ${am.orange} Min., rot ab ${am.red} Min. (änderbar über „Zeiten“) Dort kann man den Bus auch nur für heute ignorieren.</div>`}
   </div>`;
 }
@@ -3948,6 +3980,7 @@ function App(){
     </main>
     ${setup ? html`<${DeviceSetup} onDone=${() => setSetup(false)} />` : null}
     <${Celebrate} />
+    <${SimBanner} />
     ${msg ? html`<div class="toast" role="status">${msg}</div>` : null}
   </div>`;
 }
@@ -3956,7 +3989,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '89';
+const APP_VER = '90';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
