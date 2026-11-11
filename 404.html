@@ -487,6 +487,11 @@ button.lbs[aria-expanded="true"] .chev{transform:rotate(-90deg)}
   .cb-txt{display:none}
   .cb-av{width:30px;height:30px;font-size:12px;border-width:2px}
   .calbar .cb-filter [role=group]{gap:4px!important;flex-wrap:nowrap}
+  /* Namen unter den Personen-Knöpfen: Personen bekommen eine eigene, volle Zeile, damit die Namen nicht ineinanderlaufen */
+  .calbar .cb-filter{flex-wrap:wrap!important;row-gap:2px!important}
+  .calbar .cb-filter [role=group]{flex:1 1 100%;justify-content:space-between}
+  .cb-av[title]:not(.nolbl)::after{max-width:60px;font-size:11px}
+  .calbar .cb-filter .seg{flex:0 0 auto!important;width:auto!important;margin-left:auto}
   .calbar .seg{flex-shrink:0}
   .calbar .seg button{white-space:nowrap}
   .calbar .seg svg{display:none}
@@ -1003,9 +1008,16 @@ function busFor(tt, d, cfg, skip){
   const i = col.findIndex(f => f && !/pause|frei|betreuung/i.test(f));
   if (i < 0) return null;
   const c = busCfg(cfg); const b = i === 0 ? c.first : c.second;
-  if (skip || b.ignore) { if (toMin(b.car) == null) return { none: true, lesson: i + 1, skip: !!skip }; return { dep: hm(b.car), arr: '', note: 'ohne Bus', car: true, lesson: i + 1, skip: !!skip }; }
+  /* Ohne Bus: feste eigene Abfahrt, Unterrichtsbeginn minus Weg zur Schule oder Mitfahrgelegenheit minus Weg zum Treffpunkt */
+  if (skip || b.ignore) { const cw = Math.max(0, +b.carWalk || 0); let t = null, note = 'ohne Bus';
+    if (b.carMode === 'school') { const ls = toMin(tt.times && tt.times[i]); if (ls != null) { t = ls - cw; note = 'Unterricht ' + hm(tt.times[i]) + (cw ? ', ' + cw + ' Min. Weg' : ''); } }
+    else if (b.carMode === 'ride') { const r = toMin(b.ride); if (r != null) { t = r - cw; note = 'Mitfahrgelegenheit ' + hm(b.ride) + (cw ? ', ' + cw + ' Min. Weg' : ''); } }
+    else t = toMin(b.car);
+    if (t == null) return { none: true, lesson: i + 1, skip: !!skip }; return { dep: hm2(t), arr: '', note, car: true, lesson: i + 1, skip: !!skip }; }
   if (toMin(b.dep) == null) return null;
-  return { dep: hm(b.dep), arr: hm(b.arr), note: i === 0 ? '' : (b.note || ''), lesson: i + 1 };
+  /* Weg zur Haltestelle: die Ampel zählt bis zum Losgehen, nicht bis zur Busabfahrt */
+  const w = Math.max(0, +((cfg && cfg.walk) || 0));
+  return Object.assign({ dep: w ? hm2(toMin(b.dep) - w) : hm(b.dep), arr: hm(b.arr), note: i === 0 ? '' : (b.note || ''), lesson: i + 1 }, w ? { bus: hm(b.dep), walk: w } : {});
 }
 function useBuses(){
   const cfg = useDoc('config/bus');
@@ -1870,7 +1882,7 @@ function BusAmpel({ buses, allBuses, today }){
       <div class="lamp" aria-hidden="true"><i class="r"></i><i class="o"></i><i class="g"></i></div>
       <div class="bx">
         <div class="bk">${g.kids.map(k => html`<${Avatar} id=${k} size=${34} />`)}<b>${names}</b></div>
-        <div class="bt"><${Icon} n=${g.car ? 'car' : 'bus'} size=${20} />${g.car ? 'Losgehen um ' + g.dep + ' Uhr · ohne Bus' : 'Bus ' + g.dep + ' Uhr' + (g.note ? ' · ' + g.note : '')}</div>
+        <div class="bt"><${Icon} n=${g.car ? 'car' : 'bus'} size=${20} />${g.car ? 'Losgehen um ' + g.dep + ' Uhr · ' + (g.note || 'ohne Bus') : g.bus ? 'Losgehen ' + g.dep + ' · Bus ' + g.bus + ' Uhr' + (g.note ? ' · ' + g.note : '') : 'Bus ' + g.dep + ' Uhr' + (g.note ? ' · ' + g.note : '')}</div>
         <div class="bm">${msg}</div>
         ${st !== 'gone' ? html`<button type="button" class="btn small ghost" style="align-self:flex-start;min-height:38px" onClick=${() => toggleBusSkip(today, g.kids, !g.skip)}>${g.skip ? 'Doch mit dem Bus' : g.car ? 'Bus ignoriert' : 'Bus heute ignorieren'}</button>` : null}
       </div>
@@ -2770,6 +2782,15 @@ function Schule({ now }){
     ${sheet && sheet.kind === 'cell' ? html`<${CellEdit} kid=${kid} tt=${tt} at=${sheet} subjects=${subjects} onClose=${() => setSheet(null)} onPause=${ri => setSheet({ kind:'pause', ri })} />` : null}
     ${sheet && sheet.kind === 'pause' ? html`<${PauseEdit} kid=${kid} tt=${tt} ri=${sheet.ri} onClose=${() => setSheet(null)} />` : null}`;
 }
+/* Ohne Bus: wie wird die Losgeh-Zeit bestimmt? */
+function CarWay({ f, up, n, ph }){
+  const m = f['m' + n] || 'fix'; const num = (k, l) => html`<label class="field" style="flex:1 1 100px;min-width:0">${l}<span style="display:flex;align-items:center;gap:6px"><input class="input" type="number" inputmode="numeric" min="0" max="120" style="height:44px;width:100%" placeholder="0" value=${f[k]} onInput=${e => up(k, e.target.value)} /><span class="sub" style="font-size:13px">Min.</span></span></label>`;
+  return html`<div style="flex:1 1 220px;display:flex;flex-direction:column;gap:6px;min-width:0">
+    <div class="row" style="gap:6px">${[['fix', 'Feste Uhrzeit'], ['school', 'Weg zur Schule'], ['ride', 'Mitfahrgelegenheit']].map(([k, l]) => html`<button type="button" class="chip" style="min-height:36px;font-size:13px" aria-pressed=${m === k} onClick=${() => up('m' + n, k)}>${l}</button>`)}</div>
+    ${m === 'fix' ? html`<${TimeField} label="Losgehen" value=${f['c' + n]} onChange=${v => up('c' + n, v)} placeholder=${ph} />`
+      : m === 'school' ? html`<div class="row" style="gap:8px;align-items:flex-end">${num('cw' + n, 'Weg zur Schule')}<span class="sub" style="font-size:12px;flex:1 1 120px">Losgehen = Unterrichtsbeginn laut Stundenplan minus Wegzeit</span></div>`
+      : html`<div class="row" style="gap:8px;align-items:flex-end"><${TimeField} label="Abfahrt Mitfahrgelegenheit" value=${f['r' + n]} onChange=${v => up('r' + n, v)} placeholder="z. B. 7:40" style="flex:1 1 130px" />${num('cw' + n, 'Weg zum Treffpunkt')}</div>`}</div>`;
+}
 function BusCard({ tt, kid, now }){
   const cfg = useDoc('config/bus');
   const c = busCfg(cfg);
@@ -2783,25 +2804,27 @@ function BusCard({ tt, kid, now }){
     if (!(sh >= 1 && sh <= 240) || !(og >= 0 && og <= 240) || !(rd >= 0 && rd <= 240)) { toast('Bitte bei der Ampel Minuten zwischen 0 und 240 eintragen'); return; }
     if (rd > og) { toast('Rot muss kürzer vor der Abfahrt kommen als Gelb'); return; }
     const tx = (v, k) => (v || '').trim() || AMP_DEF[k];
-    S.set('config/bus', { first:{ dep:f.d1, arr:f.a1, car:f.c1 || '', ignore:!!f.i1 }, second:{ dep:f.d2, arr:f.a2, note:f.n2.trim(), car:f.c2 || '', ignore:!!f.i2 },
+    const mn = v => Math.max(0, Math.min(120, Math.round(+v || 0)));
+    S.set('config/bus', { walk: mn(f.w), first:{ dep:f.d1, arr:f.a1, car:f.c1 || '', ignore:!!f.i1, carMode: f.m1 || 'fix', carWalk: mn(f.cw1), ride: f.r1 || '' }, second:{ dep:f.d2, arr:f.a2, note:f.n2.trim(), car:f.c2 || '', ignore:!!f.i2, carMode: f.m2 || 'fix', carWalk: mn(f.cw2), ride: f.r2 || '' },
       amp:{ show: Math.max(sh, og), orange: og, red: rd, green: tx(f.tg, 'green'), orangeT: tx(f.to, 'orangeT'), redT: tx(f.tr, 'redT'), redCar: tx(f.tc, 'redCar'), gone: tx(f.tx, 'gone') } }); setF(null); toast('Bus und Ampel gespeichert'); };
   const am = ampCfg(cfg);
   const z = t => { const n = toMin(t); return n == null ? '' : pad(Math.floor(n / 60)) + ':' + pad(n % 60); };
   return html`<div class="card">
     <div class="row" style="justify-content:space-between"><h2 style="font-size:20px;display:flex;align-items:center;gap:8px"><${Icon} n="bus" size=${22} />Bus zur Schule</h2>
-      ${f ? null : html`<button type="button" class="btn small ghost" onClick=${() => setF({ d1:z(c.first.dep), a1:z(c.first.arr), c1:z(c.first.car), i1:!!c.first.ignore, d2:z(c.second.dep), a2:z(c.second.arr), n2:c.second.note || '', c2:z(c.second.car), i2:!!c.second.ignore, as:String(am.show), ao:String(am.orange), ar:String(am.red), tg:am.green, to:am.orangeT, tr:am.redT, tc:am.redCar, tx:am.gone })}><${Icon} n="edit" size=${16} />Zeiten</button>`}</div>
+      ${f ? null : html`<button type="button" class="btn small ghost" onClick=${() => setF({ d1:z(c.first.dep), a1:z(c.first.arr), c1:z(c.first.car), i1:!!c.first.ignore, d2:z(c.second.dep), a2:z(c.second.arr), n2:c.second.note || '', c2:z(c.second.car), i2:!!c.second.ignore, w:String((cfg && cfg.walk) || ''), m1:c.first.carMode || 'fix', cw1:String(c.first.carWalk || ''), r1:z(c.first.ride), m2:c.second.carMode || 'fix', cw2:String(c.second.carWalk || ''), r2:z(c.second.ride), as:String(am.show), ao:String(am.orange), ar:String(am.red), tg:am.green, to:am.orangeT, tr:am.redT, tc:am.redCar, tx:am.gone })}><${Icon} n="edit" size=${16} />Zeiten</button>`}</div>
     ${f ? html`<div class="row" style="align-items:flex-end"><b style="width:90px;font-size:14px;padding-bottom:14px">ab 1. Std.</b>
         <${TimeField} label="Abfahrt" value=${f.d1} onChange=${v => up('d1', v)} style="flex:1 1 90px" /><${TimeField} label="Ankunft" value=${f.a1} onChange=${v => up('a1', v)} style="flex:1 1 90px" /></div>
       <div class="row" style="align-items:flex-end"><b style="width:90px;font-size:14px;padding-bottom:14px">ab 2. Std.</b>
         <${TimeField} label="Abfahrt" value=${f.d2} onChange=${v => up('d2', v)} style="flex:1 1 90px" /><${TimeField} label="Ankunft" value=${f.a2} onChange=${v => up('a2', v)} style="flex:1 1 90px" /></div>
       <input class="input" style="height:44px" aria-label="Hinweis zum späteren Bus" placeholder="Hinweis, z. B. mit Betreuung" value=${f.n2} onInput=${e => up('n2', e.target.value)} />
+      <label class="field">Weg zur Haltestelle<span style="display:flex;align-items:center;gap:6px"><input class="input" type="number" inputmode="numeric" min="0" max="120" style="height:44px;width:110px" placeholder="0" value=${f.w} onInput=${e => up('w', e.target.value)} /><span class="sub" style="font-size:13px">Min. – die Ampel zählt dann bis zum Losgehen statt bis zur Busabfahrt (0 = bis zur Abfahrt)</span></span></label>
       <h3 style="font-size:15px;display:flex;align-items:center;gap:6px;margin-top:4px"><${Icon} n="car" size=${18} />Ohne Bus (z. B. gebracht)</h3>
-      <div class="sub" style="font-size:13px">Wann geht es los, wenn der Bus ignoriert wird? Dann läuft die Ampel bis zu dieser Uhrzeit.</div>
-      <div class="row" style="align-items:flex-end"><b style="width:90px;font-size:14px;padding-bottom:14px">ab 1. Std.</b>
-        <${TimeField} label="Losgehen" value=${f.c1} onChange=${v => up('c1', v)} placeholder="leer = keine Ampel" style="flex:1 1 120px" />
+      <div class="sub" style="font-size:13px">Wann geht es los, wenn der Bus ignoriert wird? Feste Uhrzeit – oder automatisch aus Unterrichtsbeginn bzw. Mitfahrgelegenheit minus Wegzeit.</div>
+      <div class="row" style="align-items:flex-end;padding-top:4px;border-top:1px solid var(--line)"><b style="width:100%;font-size:14px">Unterricht ab 1. Std.</b>
+        <${CarWay} f=${f} up=${up} n="1" ph="leer = keine Ampel" />
         <label class="check" style="display:flex;gap:8px;align-items:center;font-weight:800;font-size:13px;padding-bottom:12px"><input type="checkbox" checked=${f.i1} onChange=${e => up('i1', e.target.checked)} style="width:22px;height:22px" />Bus immer ignorieren</label></div>
-      <div class="row" style="align-items:flex-end"><b style="width:90px;font-size:14px;padding-bottom:14px">ab 2. Std.</b>
-        <${TimeField} label="Losgehen" value=${f.c2} onChange=${v => up('c2', v)} placeholder="z. B. 8:30" style="flex:1 1 120px" />
+      <div class="row" style="align-items:flex-end;padding-top:4px;border-top:1px solid var(--line)"><b style="width:100%;font-size:14px">Unterricht ab 2. Std.</b>
+        <${CarWay} f=${f} up=${up} n="2" ph="z. B. 8:30" />
         <label class="check" style="display:flex;gap:8px;align-items:center;font-weight:800;font-size:13px;padding-bottom:12px"><input type="checkbox" checked=${f.i2} onChange=${e => up('i2', e.target.checked)} style="width:22px;height:22px" />Bus immer ignorieren</label></div>
       <h3 style="font-size:15px;display:flex;align-items:center;gap:6px;margin-top:4px">🚦 Ampel auf „Heute“</h3>
       <div class="sub" style="font-size:13px">Minuten vor der Abfahrt (bzw. vor dem Losgehen)</div>
@@ -2812,7 +2835,7 @@ function BusCard({ tt, kid, now }){
       <div class="row"><button type="button" class="btn small" onClick=${save}>Speichern</button><button type="button" class="btn small ghost" onClick=${() => setF(null)}>Abbrechen</button></div>` : html`
       <div class="list">${week.map(w => html`<div class="li">
         <b style="width:28px">${WD[w.d.getDay()]}</b>
-        <div class="tx">${w.b ? html`<b>${w.b.car ? 'Ohne Bus, los um ' : ''}${w.b.dep} Uhr</b><span>Unterricht ab ${w.b.lesson}. Std.${w.b.note && !w.b.car ? ' · ' + w.b.note : ''}</span>` : html`<span>${w.none ? 'ohne Bus (keine Uhrzeit eingetragen)' : tt ? 'kein Unterricht eingetragen' : 'erst Stundenplan eintragen'}</span>`}</div>
+        <div class="tx">${w.b ? html`<b>${w.b.car ? 'Ohne Bus, los um ' : w.b.bus ? 'Los ' : ''}${w.b.dep} Uhr${w.b.bus ? ' · Bus ' + w.b.bus : ''}</b><span>Unterricht ab ${w.b.lesson}. Std.${w.b.note && !w.b.car ? ' · ' + w.b.note : ''}</span>` : html`<span>${w.none ? 'ohne Bus (keine Uhrzeit eingetragen)' : tt ? 'kein Unterricht eingetragen' : 'erst Stundenplan eintragen'}</span>`}</div>
       </div>`)}</div>
       <${FreeDays} />
       <div class="sub" style="font-size:13px">Gilt für ${SCHOOL.map(m => m.name).join(' und ')}. In den hessischen Schulferien und an Feiertagen gibt es keinen Bus und keine Ampel. Der Bus ergibt sich aus der ersten Stunde im Stundenplan. Auf „Heute“ zeigt eine Ampel, wann es losgeht: Countdown ab ${am.show} Min. vorher, grün = noch Zeit, gelb ab ${am.orange} Min., rot ab ${am.red} Min. (änderbar über „Zeiten“) Dort kann man den Bus auch nur für heute ignorieren.</div>`}
@@ -3933,7 +3956,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '88';
+const APP_VER = '89';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
