@@ -525,6 +525,9 @@ button.lbs[aria-expanded="true"] .chev{transform:rotate(-90deg)}
 .cell.ghost .gs{font-size:11px;font-weight:600;line-height:1.1}
 .cell.ghost.pastcell{opacity:.35}
 .tt .tm.ghosttm{opacity:.6}
+/* Zeitspalte bleibt beim seitlichen Wischen stehen */
+.ovx .tt>div:first-child,.ovx .tt .tm{position:sticky;left:0;z-index:3;background:var(--surface)!important;box-shadow:8px 0 0 var(--surface)}
+.ovx .tt .tm.ghosttm{opacity:1;color:var(--muted)}
 .iconbtn.spk{width:36px;height:36px;border-radius:10px;background:var(--surface-2);flex-shrink:0}
 .taskrow{position:relative;min-width:0}.taskrow>.task{width:100%}
 .taskrow>.iconbtn.spk{position:absolute;top:-9px;left:-7px;width:32px;height:32px;border-radius:50%;background:var(--surface);border:2px solid var(--line);color:var(--fg);z-index:2;box-shadow:0 2px 6px rgba(0,0,0,.18)}
@@ -2671,8 +2674,10 @@ function Schule({ now }){
   const days = [0,1,2,3,4].map(i => addDays(mon, i));
   const today = iso(now);
   const kidExams = (exams || []).filter(x => x.kid === kid);
-  /* Vergangene Wochentage ausblenden (am Wochenende die ganze Woche zeigen) */
-  const visAll = days.map((d, di) => ({ d, di })); const vis = visAll.filter(x => iso(x.d) >= today).length ? visAll.filter(x => iso(x.d) >= today) : visAll;
+  /* Alle Wochentage bleiben da; beim Öffnen steht der heutige Tag ganz links (vergangene Tage per Wischen nach rechts) */
+  const vis = days.map((d, di) => ({ d, di })); const ovxRef = useRef(null); const hasTt = !!(tt && tt.times);
+  useEffect(() => { const box = ovxRef.current; if (!box) return; const h = box.querySelector('.h.today'); const tm = box.querySelector('.tt > div');
+    if (!h) { box.scrollLeft = 0; return; } box.scrollLeft = Math.max(0, box.scrollLeft + h.getBoundingClientRect().left - box.getBoundingClientRect().left - (tm ? tm.offsetWidth : 88) - 8); }, [kid, hasTt, today]);
   /* Geschwister-Stundenpläne für die blassen Schatten-Stunden */
   const ttAll = useCol('timetables');
   const sibs = SCHOOL.filter(m => m.id !== kid).map(m => ({ m, t: (ttAll || []).find(x => x.id === m.id) })).filter(x => x.t && x.t.times);
@@ -2702,7 +2707,7 @@ function Schule({ now }){
             <div class="row" style="justify-content:center"><button type="button" class="btn" onClick=${() => setSheet({ kind:'shot' })}><${Icon} n="camera" size=${20} />Screenshot einlesen</button>
             <button type="button" class="btn ghost" onClick=${blank}>Selbst eintragen</button></div></div></div>` : html`
           <div class="card">
-            <div class="ovx"><div class="tt" style=${'grid-template-columns:88px repeat(' + vis.length + ',minmax(90px,1fr));min-width:' + (88 + vis.length * 98) + 'px'}>
+            <div class="ovx" ref=${ovxRef}><div class="tt" style=${'grid-template-columns:88px repeat(' + vis.length + ',minmax(90px,1fr));min-width:' + (88 + vis.length * 98) + 'px'}>
               <div></div>
               ${vis.map(({ d }) => html`<div class=${'h' + (iso(d) === today ? ' today' : '')}><span style="font-size:17px">${WD[d.getDay()]}</span><span style="font-size:14px">${dm(d)}</span></div>`)}
               ${(() => { const nowM = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60; const todayS = iso(now);
@@ -3928,7 +3933,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '87';
+const APP_VER = '88';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
