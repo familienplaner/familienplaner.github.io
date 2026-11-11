@@ -286,6 +286,14 @@ h1,h2,h3{margin:0;text-wrap:balance}
 @keyframes buspulse{from{opacity:1}to{opacity:.45}}
 @media (prefers-reduced-motion:reduce){.bus.red .bc{animation:none}}
 @media (max-width:700px){.bus{gap:12px;padding:12px}.bus .bc{font-size:36px}.bus .bm{font-size:18px}}
+/* Ampel bleibt beim Scrollen oben angeheftet; angeheftet wird sie kompakt */
+.buses.pin{position:sticky;top:var(--bustop,0px);z-index:43;background:var(--bg);margin:0 -16px;padding:6px 16px;transition:box-shadow .15s}
+.buses.pin.stuck{box-shadow:0 8px 12px -8px rgba(0,0,0,.3)}
+.buses.stuck .bus{padding:6px 14px;gap:12px;border-radius:18px}
+.buses.stuck .bus .lamp{flex-direction:row;padding:5px;gap:4px;border-radius:12px}.buses.stuck .bus .lamp i{width:16px;height:16px}
+.buses.stuck .bus .bt,.buses.stuck .bus .btn,.buses.stuck .bus .bk .avatar{display:none}
+.buses.stuck .bus .bk{font-size:15px}.buses.stuck .bus .bm{font-size:17px}.buses.stuck .bus .bc{font-size:32px}
+.buses.stuck .bus .bx{flex-direction:row;align-items:baseline;gap:10px;flex-wrap:wrap}
 .ev.busev{border:2px dashed var(--line)}
 .busform{display:grid;grid-template-columns:auto 1fr 1fr;gap:8px;align-items:center}
 .busform .input{height:44px}
@@ -506,6 +514,17 @@ button.lbs[aria-expanded="true"] .chev{transform:rotate(-90deg)}
   .shopbar .mic,.shopbar .btn[type=submit]{width:46px;height:46px;min-height:46px!important;padding:0!important;flex-shrink:0}
 }
 @media (max-width:400px){.schoolhead .sub{display:none}.shopbar .whobar h2{display:none}}
+/* Handy: Kinder-Knöpfe rutschen unter die Überschrift statt rechts aus dem Bild */
+@media (max-width:640px){
+  .schoolhead{flex-wrap:wrap!important}
+  .schoolhead .kidbar{width:100%;overflow-x:auto;scrollbar-width:none}
+}
+/* Schatten-Stunden: das andere Schulkind hat zu dieser Zeit Unterricht */
+.cell.ghost{background:transparent!important;border:2px dashed var(--gc,var(--line));color:var(--muted);font-weight:700;font-size:13px;flex-direction:column;gap:2px;opacity:.75;padding:4px}
+.cell.ghost .gn{display:flex;align-items:center;gap:4px;font-size:12px;font-weight:800;color:var(--fg)}
+.cell.ghost .gs{font-size:11px;font-weight:600;line-height:1.1}
+.cell.ghost.pastcell{opacity:.35}
+.tt .tm.ghosttm{opacity:.6}
 .iconbtn.spk{width:36px;height:36px;border-radius:10px;background:var(--surface-2);flex-shrink:0}
 .taskrow{position:relative;min-width:0}.taskrow>.task{width:100%}
 .taskrow>.iconbtn.spk{position:absolute;top:-9px;left:-7px;width:32px;height:32px;border-radius:50%;background:var(--surface);border:2px solid var(--line);color:var(--fg);z-index:2;box-shadow:0 2px 6px rgba(0,0,0,.18)}
@@ -1826,8 +1845,15 @@ function BusAmpel({ buses, allBuses, today }){
   const noneKids = (allBuses || []).filter(b => b.none && b.skip).map(b => b.kid);
   const list = Object.keys(groups).map(k => Object.assign(groups[k], { left: toMin(groups[k].dep) - nm })).filter(g => g.left > -10 && g.left <= 90).sort((a, b) => a.left - b.left);
   const showNone = noneKids.length && nm < 10 * 60;
+  /* Anheften: Abstand nach oben = Navigation + Tageszeit-Leiste (falls sichtbar), "stuck" sobald sie oben klebt */
+  const live = list.some(g => g.left > 0); const ref = useRef(null); const [stuck, setStuck] = useState(false);
+  useEffect(() => { if (!live) return; const calc = () => { const el = ref.current; if (!el) return; const nav = document.querySelector('.nav'); const sb = document.querySelector('.slotbar');
+      let top = 0; if (sb && sb.offsetParent) top = sb.getBoundingClientRect().bottom; else if (nav && getComputedStyle(nav).position === 'sticky') top = nav.getBoundingClientRect().bottom;
+      top = Math.max(0, Math.round(top)); el.style.setProperty('--bustop', top + 'px'); setStuck(el.getBoundingClientRect().top <= top + 1 && window.scrollY > 4); };
+    calc(); const t = setTimeout(calc, 300); window.addEventListener('scroll', calc, { passive: true }); window.addEventListener('resize', calc);
+    return () => { clearTimeout(t); window.removeEventListener('scroll', calc); window.removeEventListener('resize', calc); }; }, [live]);
   if (!list.length && !showNone) return null;
-  return html`<div class="buses">${list.map(g => {
+  return html`<div ref=${ref} class=${'buses' + (live ? ' pin' : '') + (live && stuck ? ' stuck' : '')}>${list.map(g => {
     const st = g.left <= 0 ? 'gone' : g.left < 5 ? 'red' : g.left < 15 ? 'orange' : 'green';
     const secs = Math.max(0, Math.ceil(g.left * 60));
     const msg = g.car ? { green:'Noch Zeit – in Ruhe fertig machen', orange:'Schuhe und Jacke an!', red:'Jetzt geht’s los!', gone:'Losgefahren' }[st]
@@ -2641,6 +2667,16 @@ function Schule({ now }){
   const days = [0,1,2,3,4].map(i => addDays(mon, i));
   const today = iso(now);
   const kidExams = (exams || []).filter(x => x.kid === kid);
+  /* Vergangene Wochentage ausblenden (am Wochenende die ganze Woche zeigen) */
+  const visAll = days.map((d, di) => ({ d, di })); const vis = visAll.filter(x => iso(x.d) >= today).length ? visAll.filter(x => iso(x.d) >= today) : visAll;
+  /* Geschwister-Stundenpläne für die blassen Schatten-Stunden */
+  const ttAll = useCol('timetables');
+  const sibs = SCHOOL.filter(m => m.id !== kid).map(m => ({ m, t: (ttAll || []).find(x => x.id === m.id) })).filter(x => x.t && x.t.times);
+  const sibLessons = (di, A, B) => { const r = []; sibs.forEach(({ m, t }) => t.times.forEach((tm, j) => { const f = (t.days[di] || [])[j]; const a = toMin(tm), b = lessonEnd(t, j);
+    if (f && a != null && b != null && a < B && b > A && !r.some(x => x.m.id === m.id)) r.push({ m, f }); })); return r; };
+  const ghostCell = (d, di, A, B, fr, key, onClick) => { const g = sibLessons(di, A, B); if (!g.length) return null;
+    return html`<button type="button" key=${key} class=${'cell ghost' + (fr >= 1 ? ' pastcell' : '')} style=${'--gc:' + mt(g[0].m.id)} onClick=${onClick} tabindex=${onClick ? null : '-1'} aria-label=${WD[d.getDay()] + ': ' + g.map(x => x.m.name + ' hat ' + x.f).join(', ')}>
+      ${g.map(x => html`<span class="gn"><${Avatar} id=${x.m.id} size=${18} />${x.m.name}</span><span class="gs">${x.f}</span>`)}</button>`; };
   const subjects = tt ? Array.from(new Set([].concat.apply([], tt.days).filter(Boolean).filter(f => !/pause|frei/i.test(f)))) : [];
   const upcoming = (exams || []).filter(x => daysUntil(x.datum, now) >= 0).sort((a,b) => a.datum.localeCompare(b.datum));
   if (!kid) return html`<div class="head"><div><h1>Stundenplan</h1></div></div><div class="card"><div class="empty"><strong>Niemand geht zur Schule</strong>In „Familie verwalten“ (Seite Sterne) bei einem Kind „Geht zur Schule“ einschalten.</div></div>`;
@@ -2662,17 +2698,26 @@ function Schule({ now }){
             <div class="row" style="justify-content:center"><button type="button" class="btn" onClick=${() => setSheet({ kind:'shot' })}><${Icon} n="camera" size=${20} />Screenshot einlesen</button>
             <button type="button" class="btn ghost" onClick=${blank}>Selbst eintragen</button></div></div></div>` : html`
           <div class="card">
-            <div class="ovx"><div class="tt" style=${'grid-template-columns:88px repeat(5,minmax(90px,1fr));min-width:560px'}>
+            <div class="ovx"><div class="tt" style=${'grid-template-columns:88px repeat(' + vis.length + ',minmax(90px,1fr));min-width:' + (88 + vis.length * 98) + 'px'}>
               <div></div>
-              ${days.map(d => html`<div class=${'h' + (iso(d) === today ? ' today' : '')}><span style="font-size:17px">${WD[d.getDay()]}</span><span style="font-size:14px">${dm(d)}</span></div>`)}
+              ${vis.map(({ d }) => html`<div class=${'h' + (iso(d) === today ? ' today' : '')}><span style="font-size:17px">${WD[d.getDay()]}</span><span style="font-size:14px">${dm(d)}</span></div>`)}
               ${(() => { const nowM = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60; const todayS = iso(now);
                 const frac = (d, a, b) => { const ds = iso(d); if (ds < todayS) return 1; if (ds > todayS || a == null || b == null) return 0; return Math.max(0, Math.min(1, (nowM - a) / Math.max(1, b - a))); };
                 const ov = (fr, isToday) => fr <= 0 ? null : fr >= 1 ? null : html`<span class="pastov" style=${'height:' + Math.round(fr * 100) + '%'}></span>`;
                 const out = [];
+                /* Zusatzzeilen, wenn ein Geschwisterkind früher anfängt oder länger Schule hat */
+                const mA = tt.times.map(toMin).filter(x => x != null); const first = mA.length ? Math.min.apply(null, mA) : null;
+                const mB = tt.times.map((x, i) => lessonEnd(tt, i)).filter(x => x != null); const last = mB.length ? Math.max.apply(null, mB) : null;
+                const extra = (pre) => { const iv = []; sibs.forEach(({ t }) => t.times.forEach((tm, j) => { const a = toMin(tm), b = lessonEnd(t, j); if (a == null || b == null || first == null) return;
+                  if (!(pre ? b <= first : a >= last)) return; if (!t.days.some(dd => (dd || [])[j])) return; if (!iv.some(x => x.a === a)) iv.push({ a, b }); }));
+                  iv.sort((x, y) => x.a - y.a).forEach(({ a, b }, k) => { out.push(html`<div class="tm ghosttm"><span style="font-size:13px">${pre ? 'davor' : 'danach'}</span><small>${hm2(a)}–${hm2(b)}</small></div>`);
+                    vis.forEach(({ d, di }) => { out.push(ghostCell(d, di, a, b, frac(d, a, b), 'x' + pre + k + di) || html`<div></div>`); }); }); };
+                extra(true);
                 tt.times.forEach((time, ri) => {
                   const a = toMin(time), b = lessonEnd(tt, ri);
                   out.push(html`<div class="tm"><span>${ri+1}.</span><small>${time}${b != null ? '–' + hm2(b) : ''}</small></div>`);
-                  days.forEach((d, di) => { const f = (tt.days[di] || [])[ri]; const fr = frac(d, a, b);
+                  vis.forEach(({ d, di }) => { const f = (tt.days[di] || [])[ri]; const fr = frac(d, a, b);
+                    if (!f && a != null && b != null) { const gc = ghostCell(d, di, a, b, fr, null, () => setSheet({ kind:'cell', di, ri, f: '' })); if (gc) { out.push(gc); return; } }
                     const ex = f && kidExams.some(x => x.datum === iso(d) && x.fach.toLowerCase() === f.toLowerCase());
                     out.push(html`<button type="button" class=${'cell' + (f ? '' : ' empty-cell') + (ex ? ' exam' : '') + (fr >= 1 ? ' pastcell' : '')} style=${f ? 'background:var(--tone-' + toneOf(f) + ')' : ''}
                       onClick=${() => setSheet({ kind:'cell', di, ri, f: f || '' })} aria-label=${WD[d.getDay()] + ' ' + (ri+1) + '. Stunde: ' + (f || 'frei') + (fr >= 1 ? ', vorbei' : fr > 0 ? ', läuft gerade' : '')}>
@@ -2680,11 +2725,13 @@ function Schule({ now }){
                   const na = ri + 1 < tt.times.length ? toMin(tt.times[ri + 1]) : null;
                   if (b != null && na != null && na - b >= 5) { const pn = ((tt.pauseNames || {})[ri]) || 'Pause'; const op = () => setSheet({ kind:'pause', ri });
                     out.push(html`<button type="button" class="tm pausetm" style="border:none;background:none;font:inherit;color:inherit;cursor:pointer" onClick=${op} aria-label=${pn + ' ' + hm2(b) + ' bis ' + hm2(na) + ' bearbeiten'}><small>${pn} ${hm2(b)}–${hm2(na)}</small></button>`);
-                    days.forEach(d => { const fr = frac(d, b, na); out.push(html`<button type="button" class=${'pausecell' + (fr >= 1 ? ' pastcell' : '')} style="border:none;font:inherit;cursor:pointer" onClick=${op} tabindex="-1" aria-hidden="true">${ov(fr)}<span style="position:relative">${pn}</span></button>`); });
+                    vis.forEach(({ d }) => { const fr = frac(d, b, na); out.push(html`<button type="button" class=${'pausecell' + (fr >= 1 ? ' pastcell' : '')} style="border:none;font:inherit;cursor:pointer" onClick=${op} tabindex="-1" aria-hidden="true">${ov(fr)}<span style="position:relative">${pn}</span></button>`); });
                   }
                 });
+                extra(false);
                 return out; })()}
             </div></div>
+            ${sibs.length ? html`<div class="sub" style="font-size:13px">Gestrichelt und blass = ${sibs.map(x => x.m.name).join(' und ')} hat zu der Zeit noch Schule.</div>` : null}
             <div class="row" style="justify-content:space-between">
               <span class="sub" style="font-size:13px">Tippe auf eine Stunde, um sie zu ändern oder die Zeile zu löschen – oder auf eine Pause, um sie einzustellen.</span>
               <div class="row">
@@ -3865,7 +3912,7 @@ const tpBox = document.createElement('div'); document.body.appendChild(tpBox); r
 const taskBox = document.createElement('div'); document.body.appendChild(taskBox); render(html`<${TaskHost} />`, taskBox);
 const pinBox = document.createElement('div'); document.body.appendChild(pinBox); render(html`<${PinHost} />`, pinBox);
 /* Automatisch aktualisieren: alle 10 Minuten nachsehen, ob eine neue Version online ist */
-const APP_VER = '85';
+const APP_VER = '86';
 function UpdateBar(){
   const [nv, setNv] = useState(null);
   useEffect(() => { const chk = async () => { try { const t = await fetch('/index.html?u=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
